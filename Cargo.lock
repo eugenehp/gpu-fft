@@ -231,8 +231,6 @@ checksum = "aecf090429a4172d94c819e2977f440d7f5846c09f31d36937de309f986c878e"
 dependencies = [
  "cubecl-core",
  "cubecl-cuda",
- "cubecl-hip",
- "cubecl-linalg",
  "cubecl-runtime",
  "cubecl-wgpu",
  "half",
@@ -246,7 +244,6 @@ checksum = "10239ee4800968f367fbc4828250d38acf5d14fa53e8d0370d5f474387591322"
 dependencies = [
  "derive-new",
  "embassy-futures",
- "futures-lite",
  "getrandom",
  "log",
  "portable-atomic",
@@ -306,46 +303,6 @@ dependencies = [
  "derive-new",
  "half",
  "log",
-]
-
-[[package]]
-name = "cubecl-hip"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "976e150315f9d7d6bb84c51cb13c19221ea5d185bb6d61347a3c392dd29720de"
-dependencies = [
- "bytemuck",
- "cubecl-common",
- "cubecl-core",
- "cubecl-cpp",
- "cubecl-hip-sys",
- "cubecl-runtime",
- "derive-new",
- "half",
- "log",
- "paste",
-]
-
-[[package]]
-name = "cubecl-hip-sys"
-version = "6.3.1001"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7e92df7f9feff6a469932fc4d4b349d28000af9e6f34e583eb4f8df70038d48"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "cubecl-linalg"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "640c379e225fecb1336f963affd3b8f1ff66b9320a972dfe92d8158dca8b6382"
-dependencies = [
- "bytemuck",
- "cubecl-core",
- "cubecl-runtime",
- "half",
- "serde",
 ]
 
 [[package]]
@@ -546,12 +503,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fastrand"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -595,25 +546,6 @@ name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
-
-[[package]]
-name = "futures-io"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e5c1b78ca4aae1ac06c48a526a655760685149f0d465d21f37abfe57ce075c6"
-
-[[package]]
-name = "futures-lite"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5edaec856126859abb19ed65f39e90fea3a9574b9707f13539acf4abf7eb532"
-dependencies = [
- "fastrand",
- "futures-core",
- "futures-io",
- "parking",
- "pin-project-lite",
-]
 
 [[package]]
 name = "getrandom"
@@ -1076,7 +1008,6 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
- "libc",
  "rand_chacha",
  "rand_core",
 ]
@@ -1096,9 +1027,6 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "range-alloc"

@@ -1,30 +1,23 @@
-use std::{f32::consts::PI, time::Instant};
+use std::time::Instant;
+
+use gpu_fft::{fft, ifft, psd, utils};
 
 type Runtime = cubecl::wgpu::WgpuRuntime;
 
-fn generate_sine_wave(frequency: f32, sample_rate: f32, duration: f32) -> Vec<f32> {
-    let num_samples = (sample_rate * duration) as usize;
-    let mut sine_wave = Vec::with_capacity(num_samples);
-
-    for n in 0..num_samples {
-        let sample = (2.0 * PI * frequency * (n as f32 / sample_rate)).sin();
-        sine_wave.push(sample);
-    }
-
-    sine_wave
-}
-
 pub fn main() {
+    let device = Default::default();
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
-    let input: Vec<f32> = generate_sine_wave(30.0, 1000.0, 1000.0); // 1 million samples
+    let sample_rate = 1000.0;
+    let frequency = 10.0;
+    let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 1000.0); // 1 million samples
 
     println!("====================");
-    println!("\tInput");
+    println!("\tInput with frequency - {frequency} Hz");
     println!("====================");
     println!("{} {:?}..", input.len(), &input[0..10]);
 
     let start_time = Instant::now();
-    let (real, imag) = gpu_fft::fft::<Runtime>(&Default::default(), input);
+    let (real, imag) = fft::<Runtime>(&device, input);
     let elapsed_time = start_time.elapsed();
 
     println!("====================");
@@ -34,9 +27,19 @@ pub fn main() {
     //     println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
     // }
 
+    let spectrum = psd(real.clone(), imag.clone());
+    let frequencies = utils::calculate_frequencies(spectrum.len(), sample_rate);
+
+    let dominant_frequencies = utils::find_dominant_frequencies(spectrum, frequencies, 100.0);
+
+    // Print dominant frequencies
+    for (freq, power) in dominant_frequencies {
+        println!("Frequency: {:.2} Hz, Power: {:.2}", freq, power);
+    }
+
     let n = real.len();
     let start_time = Instant::now();
-    let output = gpu_fft::ifft::<Runtime>(&Default::default(), real, imag);
+    let output = ifft::<Runtime>(&device, real, imag);
     let elapsed_time = start_time.elapsed();
 
     println!("====================");
@@ -45,6 +48,6 @@ pub fn main() {
     for i in 0..n {
         let real = output[i];
         let imag = output[i + n]; // Assuming output is interleaved
-        // println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
+                                  // println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
     }
 }

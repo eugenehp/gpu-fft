@@ -2,6 +2,19 @@
 name = "gpu-fft"
 version = "0.0.1"
 edition = "2021"
+authors = ["Eugene Hauptmann"]
+description = "A Rust library for performing Fast Fourier Transform (FFT) and Inverse FFT using GPU acceleration."
+repository = "https://github.com/name/gpu-fft.git"
+keywords = ["FFT", "GPU", "CubeCL", "Rust", "Kernel"]
+license = "MIT" 
+readme = "README.md"
+homepage = "https://github.com/eugenehp/gpu-fft"
+documentation = "https://docs.rs/gpu-fft" 
 
 [dependencies]
-cubecl = { version = "0.4.0", features = ["wgpu"] }
+cubecl = { version = "0.4.0", default-features = false }
+
+[features]
+default = []
+cuda = ["cubecl/cuda"]
+wgpu = ["cubecl/wgpu"]
