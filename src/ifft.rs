@@ -1,6 +1,8 @@
 use cubecl::prelude::*;
 use std::f32::consts::PI;
 
+use crate::WORKGROUP_SIZE;
+
 #[cube(launch_unchecked)]
 fn ifft_kernel<F: Float>(input_real: &Array<Line<F>>, input_imag: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: u32) {
     let idx = ABSOLUTE_POS;
@@ -31,15 +33,13 @@ pub fn ifft<R: Runtime>(device: &R::Device, input_real: Vec<f32>, input_imag: Ve
     let imag_handle = client.create(f32::as_bytes(&input_imag));
     let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Assuming output is interleaved
 
-    // Define a workgroup size
-    const WORKGROUP_SIZE: usize = 256; // Adjust this value as needed
-    let num_workgroups = (n + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE; // Calculate the number of workgroups needed
+    let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
     unsafe {
         ifft_kernel::launch_unchecked::<f32, R>(
             &client,
-            CubeCount::Static(num_workgroups as u32, 1, 1), // Use the calculated number of workgroups
-            CubeDim::new(WORKGROUP_SIZE as u32, 1, 1), // Set the workgroup size
+            CubeCount::Static(num_workgroups, 1, 1), 
+            CubeDim::new(WORKGROUP_SIZE, 1, 1),
             ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1),

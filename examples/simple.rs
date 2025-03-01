@@ -16,7 +16,7 @@ fn generate_sine_wave(frequency: f32, sample_rate: f32, duration: f32) -> Vec<f3
 
 pub fn main() {
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
-    let input: Vec<f32> = generate_sine_wave(30.0, 1000.0, 3.0 * 1000.0); // 3.0 is out of memory
+    let input: Vec<f32> = generate_sine_wave(30.0, 1000.0, 1000.0); // 1 million samples
 
     println!("====================");
     println!("\tInput");
