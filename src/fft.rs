@@ -22,7 +22,7 @@ fn fft_kernel<F: Float>(input: &Array<Line<F>>, real_output: &mut Array<Line<F>>
     }
 }
 
-pub fn fft<R: Runtime>(device: &R::Device, input:Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
     let client = R::client(device);
     let n = input.len();
     
@@ -31,11 +31,15 @@ pub fn fft<R: Runtime>(device: &R::Device, input:Vec<f32>) -> (Vec<f32>, Vec<f32
     let real_handle = client.empty(n * core::mem::size_of::<f32>());
     let imag_handle = client.empty(n * core::mem::size_of::<f32>());
 
+    // Define a workgroup size
+    const WORKGROUP_SIZE: usize = 256; // Adjust this value as needed
+    let num_workgroups = (n + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE; // Calculate the number of workgroups needed
+
     unsafe {
         fft_kernel::launch_unchecked::<f32, R>(
             &client,
-            CubeCount::Static(1, 1, 1),
-            CubeDim::new(n as u32, 1, 1),
+            CubeCount::Static(num_workgroups as u32, 1, 1), // Use the calculated number of workgroups
+            CubeDim::new(WORKGROUP_SIZE as u32, 1, 1), // Set the workgroup size
             ArrayArg::from_raw_parts::<f32>(&input_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),

@@ -31,11 +31,15 @@ pub fn ifft<R: Runtime>(device: &R::Device, input_real: Vec<f32>, input_imag: Ve
     let imag_handle = client.create(f32::as_bytes(&input_imag));
     let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Assuming output is interleaved
 
+    // Define a workgroup size
+    const WORKGROUP_SIZE: usize = 256; // Adjust this value as needed
+    let num_workgroups = (n + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE; // Calculate the number of workgroups needed
+
     unsafe {
         ifft_kernel::launch_unchecked::<f32, R>(
             &client,
-            CubeCount::Static(1, 1, 1),
-            CubeDim::new(n as u32, 1, 1),
+            CubeCount::Static(num_workgroups as u32, 1, 1), // Use the calculated number of workgroups
+            CubeDim::new(WORKGROUP_SIZE as u32, 1, 1), // Set the workgroup size
             ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1),
