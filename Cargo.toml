@@ -1,0 +1,6 @@
+[package]
+name = "gpu-fft"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
