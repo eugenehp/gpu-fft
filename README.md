@@ -59,7 +59,7 @@ Frequency: 990.00 Hz, Power: 247388.88
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](/LICENSE) file for details.
 
 ## Copyright
 
