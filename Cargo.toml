@@ -12,7 +12,7 @@ homepage = "https://github.com/eugenehp/gpu-fft"
 documentation = "https://docs.rs/gpu-fft" 
 
 [dependencies]
-cubecl = { version = "0.4.0", default-features = false }
+cubecl = { version = "0.4.0" }
 
 [features]
 default = []

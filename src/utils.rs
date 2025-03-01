@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 /// Generates a sine wave signal based on the specified frequency, sample rate, and duration.
 ///
 /// This function creates a vector of samples representing a sine wave. The sine wave is generated
