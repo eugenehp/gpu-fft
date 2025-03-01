@@ -1,3 +1,32 @@
+/// Computes the Power Spectral Density (PSD) from the real and imaginary components of a signal.
+///
+/// The Power Spectral Density is a measure of the power of a signal per unit frequency. This function
+/// calculates the PSD by first computing the magnitude of the complex numbers represented by the
+/// real and imaginary components, and then calculating the power from the magnitude. The result is
+/// normalized by the number of points in the input vectors.
+///
+/// # Parameters
+///
+/// - `real`: A vector of `f32` values representing the real parts of the complex signal.
+/// - `imag`: A vector of `f32` values representing the imaginary parts of the complex signal.
+///
+/// # Returns
+///
+/// A vector of `f32` values representing the Power Spectral Density of the input signal. The length
+/// of the output vector will be the same as the input vectors.
+///
+/// # Example
+///
+/// ```rust
+/// let real = vec![1.0, 0.0, 0.0, 0.0]; // Example real input
+/// let imag = vec![0.0, 0.0, 0.0, 0.0]; // Example imaginary input
+/// let psd_values = psd(real, imag);
+/// ```
+///
+/// # Note
+///
+/// The normalization step (dividing by `n`) is optional and can be adjusted based on specific
+/// requirements or conventions in your application.
 pub fn psd(real: Vec<f32>, imag: Vec<f32>) -> Vec<f32> {
     let n = real.len();
     let mut psd = Vec::with_capacity(n);
