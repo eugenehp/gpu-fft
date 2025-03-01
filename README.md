@@ -61,4 +61,6 @@ Frequency: 990.00 Hz, Power: 247388.88
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-```
+## Copyright
+
+©️ 2025, Eugene Hauptmann
