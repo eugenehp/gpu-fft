@@ -9,6 +9,8 @@ pub fn main() {
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
     let sample_rate = 1000.0;
     let frequency = 10.0;
+    let threshold = 100.0;
+
     let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 1000.0); // 1 million samples
 
     println!("====================");
@@ -30,7 +32,7 @@ pub fn main() {
     let spectrum = psd(real.clone(), imag.clone());
     let frequencies = utils::calculate_frequencies(spectrum.len(), sample_rate);
 
-    let dominant_frequencies = utils::find_dominant_frequencies(spectrum, frequencies, 100.0);
+    let dominant_frequencies = utils::find_dominant_frequencies(spectrum, frequencies, threshold);
 
     // Print dominant frequencies
     for (freq, power) in dominant_frequencies {
@@ -45,9 +47,9 @@ pub fn main() {
     println!("====================");
     println!("\tIFFT {elapsed_time:?}");
     println!("====================");
-    for i in 0..n {
-        let real = output[i];
-        let imag = output[i + n]; // Assuming output is interleaved
-                                  // println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
-    }
+    // for i in 0..n {
+    //     let real = output[i];
+    //     let imag = output[i + n]; // Assuming output is interleaved
+    //     println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
+    // }
 }
