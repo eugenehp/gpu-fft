@@ -18,6 +18,10 @@ This project demonstrates the use of the `gpu_fft` library in Rust to perform Fa
 - Identify and print the dominant frequencies in the signal.
 - Perform IFFT to reconstruct the original signal.
 
+## Roadmap
+
+Add twiddles algorithm
+
 ## Requirements
 
 - Rust (1.84.1 or later)
