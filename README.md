@@ -38,7 +38,7 @@ cargo add gpu_fft -F wgpu
 To run the application, use the following command:
 
 ```bash
-cargo run --example simple
+cargo run --example simple -F wgpu
 ```
 
 The program will generate a sine wave with a specified frequency and sample rate, perform FFT, and print the dominant frequencies along with their power.
