@@ -70,12 +70,9 @@ cargo bench
 returns
 
 ```shell
-Gnuplot not found, using plotters backend
-fft                     time:   [720.18 µs 740.97 µs 761.20 µs]
-                        change: [-2.7846% -0.0849% +2.8891%] (p = 0.97 > 0.05)
-                        No change in performance detected.
-Found 3 outliers among 100 measurements (3.00%)
-  3 (3.00%) low mild
+fft     time:   [728.14 µs 748.98 µs 769.46 µs]
+        change: [-6.5555% -3.9636% -1.1877%] (p = 0.01 < 0.05)
+        Performance has improved.
 ```
 
 ## License
