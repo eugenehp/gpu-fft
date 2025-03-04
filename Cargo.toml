@@ -15,6 +15,6 @@ documentation = "https://docs.rs/gpu-fft"
 cubecl = { version = "0.4.0" }
 
 [features]
-default = []
+default = ["wgpu"]
 cuda = ["cubecl/cuda"]
 wgpu = ["cubecl/wgpu"]

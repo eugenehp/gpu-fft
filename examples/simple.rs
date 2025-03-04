@@ -9,7 +9,7 @@ pub fn main() {
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
     let sample_rate = 100.0;
     let frequency = 5.0;
-    let threshold = 0.0; //100.0;
+    let threshold = 0.1; //100.0;
 
     let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 10.0); // 1 million samples
 
@@ -26,9 +26,9 @@ pub fn main() {
     println!("====================");
     println!("\tFFT {elapsed_time:?}");
     println!("====================");
-    for (i, (real, imag)) in real.iter().zip(imag.clone()).enumerate() {
-        println!("Output[{}]:\tReal: {}, Imag: {}", i, real, imag);
-    }
+    // for (i, (real, imag)) in real.iter().zip(imag.clone()).enumerate() {
+    //     println!("Output[{}]:\tReal: {}, Imag: {}", i, real, imag);
+    // }
 
     let spectrum = psd(real.clone(), imag.clone());
     let frequencies = utils::calculate_frequencies(spectrum.len(), sample_rate);
