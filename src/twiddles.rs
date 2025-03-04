@@ -6,7 +6,8 @@ use crate::WORKGROUP_SIZE;
 #[cube(launch_unchecked)]
 fn precompute_twiddles<F: Float>(twiddles: &mut Array<Line<F>>, #[comptime] n: u32) {
     let idx = ABSOLUTE_POS;
-    if idx < n {
+    if idx < 2 * n {
+        // Precompute twiddles for the given index
         let angle_factor = F::new(-2.0) * F::new(PI) * F::cast_from(idx) / F::cast_from(n);
         for k in 0..n {
             let angle = angle_factor * F::cast_from(k);
@@ -19,26 +20,30 @@ fn precompute_twiddles<F: Float>(twiddles: &mut Array<Line<F>>, #[comptime] n: u
 
 #[cube(launch_unchecked)]
 fn fft_kernel<F: Float>(
-    input: &Array<Line<F>>, // array of real floats, there are no imaginary floaats here
-    twiddles: &Array<Line<F>>,
+    input: &Array<Line<F>>, // array of real floats, there are no imaginary floats here
+    twiddles: &Array<Line<F>>, // twiddles array is now correctly sized
     real_output: &mut Array<Line<F>>,
     imag_output: &mut Array<Line<F>>,
     #[comptime] n: u32,
 ) {
     let idx = ABSOLUTE_POS;
-    if idx < n {
+    if idx < 2 * n {
         let mut real = Line::<F>::new(F::new(0.0));
         let mut imag = Line::<F>::new(F::new(0.0));
 
-        for k in 0..n {
-            let twiddle_real = twiddles[k * 2];
-            let twiddle_imag = twiddles[k * 2 + 1];
+        // Ensure we are accessing the correct index for input
+        let input_real = input[idx * 2]; // Access the real part of the input
 
-            let input_real = input[k * 2];
+        for k in 0..n {
+            let twiddle_real = twiddles[k * 2]; // Real part of the twiddle factor
+            let twiddle_imag = twiddles[k * 2 + 1]; // Imaginary part of the twiddle factor
+
+            // Accumulate the results
             real += input_real * twiddle_real;
             imag += input_real * twiddle_imag;
         }
 
+        // Store the results in the output arrays
         real_output[idx] = real;
         imag_output[idx] = imag;
     }

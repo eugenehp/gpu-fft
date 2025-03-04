@@ -9,7 +9,7 @@ pub fn main() {
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
     let sample_rate = 100.0;
     let frequency = 5.0;
-    let threshold = 0.1; //100.0;
+    let threshold = 0.1; // 100.0;
 
     let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 10.0); // 1 million samples
 
@@ -37,7 +37,7 @@ pub fn main() {
 
     // Print dominant frequencies
     for (freq, power) in dominant_frequencies {
-        println!("Frequency: {:.2} Hz, Power: {:.2}", freq, power);
+        println!("Frequency:\t{:.2} Hz, Power: {:.2}", freq, power);
     }
 
     let n = real.len();
