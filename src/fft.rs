@@ -119,16 +119,16 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let real: Vec<f32> = output.iter().step_by(2).cloned().collect();
     let imag: Vec<f32> = output.iter().skip(1).step_by(2).cloned().collect();
 
-    println!(
-        "real {:?}..{:?}",
-        &real[0..10],
-        &real[real.len() - 10..real.len() - 1]
-    );
-    println!(
-        "imag {:?}..{:?}",
-        &imag[0..10],
-        &imag[imag.len() - 10..imag.len() - 1]
-    );
+    // println!(
+    //     "real {:?}..{:?}",
+    //     &real[0..10],
+    //     &real[real.len() - 10..real.len() - 1]
+    // );
+    // println!(
+    //     "imag {:?}..{:?}",
+    //     &imag[0..10],
+    //     &imag[imag.len() - 10..imag.len() - 1]
+    // );
 
     (real, imag)
 }

@@ -18,3 +18,10 @@ cubecl = { version = "0.4.0" }
 default = ["wgpu"]
 cuda = ["cubecl/cuda"]
 wgpu = ["cubecl/wgpu"]
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+harness = false
+name = "fft_bench"
