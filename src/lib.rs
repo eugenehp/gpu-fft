@@ -1,6 +1,7 @@
 mod fft;
 mod ifft;
 mod psd;
+pub mod twiddles;
 pub mod utils;
 
 pub use fft::*;
