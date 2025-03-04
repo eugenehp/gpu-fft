@@ -19,8 +19,8 @@ pub fn main() {
     println!("{} {:?}..", input.len(), &input[0..10]);
 
     let start_time = Instant::now();
-    // let (real, imag) = fft::<Runtime>(&device, input);
-    let (real, imag) = twiddles::fft::<Runtime>(&device, input);
+    let (real, imag) = fft::<Runtime>(&device, input);
+    // let (real, imag) = twiddles::fft::<Runtime>(&device, input);
     let elapsed_time = start_time.elapsed();
 
     println!("====================");

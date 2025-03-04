@@ -38,28 +38,28 @@ use crate::WORKGROUP_SIZE;
 /// This function does not return a value directly. Instead, it populates the `real_output`
 /// and `imag_output` arrays with the real and imaginary parts of the FFT result, respectively.
 #[cube(launch_unchecked)]
-fn fft_kernel<F: Float>(
-    input: &Array<Line<F>>,
-    real_output: &mut Array<Line<F>>,
-    imag_output: &mut Array<Line<F>>,
-    #[comptime] n: u32,
-) {
+fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: u32) {
     let idx = ABSOLUTE_POS;
     if idx < n {
         let mut real = Line::<F>::new(F::new(0.0));
         let mut imag = Line::<F>::new(F::new(0.0));
 
-        for k in 0..n {
-            let angle =
-                F::new(-2.0) * F::new(PI) * F::cast_from(k) * F::cast_from(idx) / F::cast_from(n);
+        // Precompute the angle increment
+        let angle_increment = F::new(-2.0) * F::new(PI) / F::cast_from(n);
 
+        for k in 0..n {
+            let angle = angle_increment * F::cast_from(k) * F::cast_from(idx);
             let (cos_angle, sin_angle) = (F::cos(angle), F::sin(angle));
-            real += input[k] * Line::new(cos_angle);
-            imag += input[k] * Line::new(sin_angle);
+            let input_k = input[k];
+
+            // Combine the multiplication and addition
+            real += input_k * Line::new(cos_angle);
+            imag += input_k * Line::new(sin_angle);
         }
 
-        real_output[idx] = real;
-        imag_output[idx] = imag;
+        // Store the real and imaginary parts in an interleaved manner
+        output[idx * 2] = Line::new(F::cast_from(real)); // Real part
+        output[idx * 2 + 1] = Line::new(F::cast_from(imag)); // Imaginary part
     }
 }
 
@@ -97,9 +97,7 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let n = input.len();
 
     let input_handle = client.create(f32::as_bytes(&input));
-
-    let real_handle = client.empty(n * core::mem::size_of::<f32>());
-    let imag_handle = client.empty(n * core::mem::size_of::<f32>());
+    let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Adjust for interleaved output
 
     let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
@@ -109,17 +107,17 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
             CubeCount::Static(num_workgroups, 1, 1),
             CubeDim::new(WORKGROUP_SIZE, 1, 1),
             ArrayArg::from_raw_parts::<f32>(&input_handle, n, 1),
-            ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
-            ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
+            ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1), // Adjust for interleaved output
             n as u32,
         )
     };
 
-    let real_bytes = client.read_one(real_handle.binding());
-    let real = f32::from_bytes(&real_bytes);
+    let output_bytes = client.read_one(output_handle.binding());
+    let output = f32::from_bytes(&output_bytes);
 
-    let imag_bytes = client.read_one(imag_handle.binding());
-    let imag = f32::from_bytes(&imag_bytes);
+    // Split the interleaved output into real and imaginary parts
+    let real: Vec<f32> = output.iter().step_by(2).cloned().collect();
+    let imag: Vec<f32> = output.iter().skip(1).step_by(2).cloned().collect();
 
     println!(
         "real {:?}..{:?}",
@@ -132,5 +130,5 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
         &imag[imag.len() - 10..imag.len() - 1]
     );
 
-    (real.into(), imag.into())
+    (real, imag)
 }
