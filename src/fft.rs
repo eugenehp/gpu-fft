@@ -121,5 +121,16 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let imag_bytes = client.read_one(imag_handle.binding());
     let imag = f32::from_bytes(&imag_bytes);
 
+    println!(
+        "real {:?}..{:?}",
+        &real[0..10],
+        &real[real.len() - 10..real.len() - 1]
+    );
+    println!(
+        "imag {:?}..{:?}",
+        &imag[0..10],
+        &imag[imag.len() - 10..imag.len() - 1]
+    );
+
     (real.into(), imag.into())
 }

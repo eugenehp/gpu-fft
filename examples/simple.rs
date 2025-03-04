@@ -7,11 +7,11 @@ type Runtime = cubecl::wgpu::WgpuRuntime;
 pub fn main() {
     let device = Default::default();
     // let input = vec![1.0, 0.0, 3.0, 0.0, 0.0];
-    let sample_rate = 100.0;
-    let frequency = 5.0;
+    let sample_rate = 200.0;
+    let frequency = 15.0;
     let threshold = 0.1; // 100.0;
 
-    let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 10.0); // 1 million samples
+    let input: Vec<f32> = utils::generate_sine_wave(frequency, sample_rate, 100.0); // 1 million samples
 
     println!("====================");
     println!("\tInput with frequency - {frequency} Hz");
