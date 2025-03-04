@@ -37,7 +37,7 @@ use crate::WORKGROUP_SIZE;
 ///
 /// This function does not return a value directly. Instead, it populates the `real_output`
 /// and `imag_output` arrays with the real and imaginary parts of the FFT result, respectively.
-#[cube(launch_unchecked)]
+#[cube(launch)]
 fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: u32) {
     let idx = ABSOLUTE_POS;
     if idx < n {
@@ -45,16 +45,16 @@ fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[c
         let mut imag = Line::<F>::new(F::new(0.0));
 
         // Precompute the angle increment
-        let angle_increment = F::new(-2.0) * F::new(PI) / F::cast_from(n);
+        let angle_increment = -2.0 * PI / n as f32;
 
+        // #[unroll(true)]
         for k in 0..n {
-            let angle = angle_increment * F::cast_from(k) * F::cast_from(idx);
+            let angle = F::cast_from(angle_increment) * F::cast_from(k) * F::cast_from(idx);
             let (cos_angle, sin_angle) = (F::cos(angle), F::sin(angle));
-            let input_k = input[k];
 
             // Combine the multiplication and addition
-            real += input_k * Line::new(cos_angle);
-            imag += input_k * Line::new(sin_angle);
+            real += input[k] * Line::new(cos_angle);
+            imag += input[k] * Line::new(sin_angle);
         }
 
         // Store the real and imaginary parts in an interleaved manner
@@ -102,7 +102,7 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
     unsafe {
-        fft_kernel::launch_unchecked::<f32, R>(
+        fft_kernel::launch::<f32, R>(
             &client,
             CubeCount::Static(num_workgroups, 1, 1),
             CubeDim::new(WORKGROUP_SIZE, 1, 1),
