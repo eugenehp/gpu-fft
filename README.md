@@ -61,6 +61,23 @@ Frequency: 990.00 Hz, Power: 247388.88
 ====================
 ```
 
+## Benchmarks
+
+```shell
+cargo bench
+```
+
+returns
+
+```shell
+Gnuplot not found, using plotters backend
+fft                     time:   [720.18 µs 740.97 µs 761.20 µs]
+                        change: [-2.7846% -0.0849% +2.8891%] (p = 0.97 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) low mild
+```
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](/LICENSE) file for details.
