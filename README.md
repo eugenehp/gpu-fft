@@ -1,6 +1,6 @@
 # GPU-FFT
 
-This project demonstrates the use of the `gpu_fft` library in Rust to perform Fast Fourier Transform (FFT) and Inverse Fast Fourier Transform (IFFT) on a generated sine wave signal. The application calculates the dominant frequencies in the signal and prints them along with their power.
+This project demonstrates the use of the `gpu-fft` library in Rust to perform Fast Fourier Transform (FFT) and Inverse Fast Fourier Transform (IFFT) on a generated sine wave signal. The application calculates the dominant frequencies in the signal and prints them along with their power.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ This project demonstrates the use of the `gpu_fft` library in Rust to perform Fa
 
 ## Roadmap
 
-- [ ] Add twiddles algorithm
+- [x] Add twiddles algorithm
 
 ## Requirements
 

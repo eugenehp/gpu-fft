@@ -1,6 +1,6 @@
 [package]
 name = "gpu-fft"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["Eugene Hauptmann"]
 description = "A Rust library for performing Fast Fourier Transform (FFT) and Inverse FFT using GPU acceleration."
