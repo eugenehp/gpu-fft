@@ -19,7 +19,7 @@ pub fn main() {
     println!("{} {:?}..", input.len(), &input[0..10]);
 
     let start_time = Instant::now();
-    let (real, imag) = fft::<Runtime>(&device, input);
+    let (real, imag) = fft::fft::<Runtime>(&device, input);
     // let (real, imag) = twiddles::fft::<Runtime>(&device, input);
     let elapsed_time = start_time.elapsed();
 
@@ -30,7 +30,7 @@ pub fn main() {
     //     println!("Output[{}]:\tReal: {}, Imag: {}", i, real, imag);
     // }
 
-    let spectrum = psd(real.clone(), imag.clone());
+    let spectrum = psd::psd(real.clone(), imag.clone());
     let frequencies = utils::calculate_frequencies(spectrum.len(), sample_rate);
 
     let dominant_frequencies = utils::find_dominant_frequencies(spectrum, frequencies, threshold);
@@ -42,7 +42,7 @@ pub fn main() {
 
     let n = real.len();
     let start_time = Instant::now();
-    let output = ifft::<Runtime>(&device, real, imag);
+    let output = ifft::ifft::<Runtime>(&device, real, imag);
     let elapsed_time = start_time.elapsed();
 
     println!("====================");

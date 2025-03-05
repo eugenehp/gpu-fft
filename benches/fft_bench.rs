@@ -9,7 +9,7 @@ fn benchmark_fft(c: &mut Criterion) {
     c.bench_function("fft", |b| {
         b.iter(|| {
             let device = Default::default();
-            gpu_fft::fft::<Runtime>(&device, black_box(input.clone()))
+            gpu_fft::fft::fft::<Runtime>(&device, black_box(input.clone()))
         })
     });
 }
