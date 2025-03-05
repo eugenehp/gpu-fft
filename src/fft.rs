@@ -35,8 +35,8 @@ use crate::WORKGROUP_SIZE;
 ///
 /// # Returns
 ///
-/// This function does not return a value directly. Instead, it populates the `real_output`
-/// and `imag_output` arrays with the real and imaginary parts of the FFT result, respectively.
+/// This function does not return a value directly. Instead, it populates the `output` array
+/// with the real and imaginary parts of the FFT result interleaved.
 #[cube(launch)]
 fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: u32) {
     let idx = ABSOLUTE_POS;
