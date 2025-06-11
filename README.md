@@ -22,6 +22,7 @@ This project demonstrates the use of the `gpu-fft` library in Rust to perform Fa
 
 - [x] Add twiddles algorithm
 - [ ] Add radix2 optimization
+- [ ] update to new CubeCL version
 
 ## Requirements
 
