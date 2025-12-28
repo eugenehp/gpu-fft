@@ -83,4 +83,4 @@ This project is licensed under the MIT License. See the [LICENSE](/LICENSE) file
 
 ## Copyright
 
-©️ 2025, Eugene Hauptmann
+© 2025-2026, Eugene Hauptmann
