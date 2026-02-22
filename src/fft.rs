@@ -28,9 +28,12 @@ use crate::WORKGROUP_SIZE;
 ///
 /// # Example
 ///
-/// ```rust
-/// let input = vec![1.0, 0.0, 0.0, 0.0]; // Example input
-/// let (real, imag) = fft::<YourRuntimeType>(device, input);
+/// ```ignore
+/// use cubecl::wgpu::WgpuRuntime;
+/// use gpu_fft::fft::fft;
+/// let device = Default::default();
+/// let input = vec![1.0f32, 0.0, 0.0, 0.0];
+/// let (real, imag) = fft::<WgpuRuntime>(&device, input);
 /// ```
 ///
 /// # Returns
@@ -38,7 +41,7 @@ use crate::WORKGROUP_SIZE;
 /// This function does not return a value directly. Instead, it populates the `output` array
 /// with the real and imaginary parts of the FFT result interleaved.
 #[cube(launch)]
-fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: u32) {
+fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: usize) {
     let idx = ABSOLUTE_POS;
     if idx < n {
         let mut real = Line::<F>::new(F::new(0.0));
@@ -82,9 +85,12 @@ fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[c
 ///
 /// # Example
 ///
-/// ```rust
-/// let input = vec![1.0, 0.0, 0.0, 0.0]; // Example input
-/// let (real, imag) = fft::<YourRuntimeType>(device, input);
+/// ```ignore
+/// use cubecl::wgpu::WgpuRuntime;
+/// use gpu_fft::fft::fft;
+/// let device = Default::default();
+/// let input = vec![1.0f32, 0.0, 0.0, 0.0];
+/// let (real, imag) = fft::<WgpuRuntime>(&device, input);
 /// ```
 ///
 /// # Safety
@@ -96,7 +102,7 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let client = R::client(device);
     let n = input.len();
 
-    let input_handle = client.create(f32::as_bytes(&input));
+    let input_handle = client.create_from_slice(f32::as_bytes(&input));
     let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Adjust for interleaved output
 
     let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
@@ -105,14 +111,15 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
         fft_kernel::launch::<f32, R>(
             &client,
             CubeCount::Static(num_workgroups, 1, 1),
-            CubeDim::new(WORKGROUP_SIZE, 1, 1),
+            CubeDim::new_1d(WORKGROUP_SIZE),
             ArrayArg::from_raw_parts::<f32>(&input_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1), // Adjust for interleaved output
-            n as u32,
+            n,
         )
+        .expect("FFT kernel launch failed")
     };
 
-    let output_bytes = client.read_one(output_handle.binding());
+    let output_bytes = client.read_one(output_handle);
     let output = f32::from_bytes(&output_bytes);
 
     // Split the interleaved output into real and imaginary parts

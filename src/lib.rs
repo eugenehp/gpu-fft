@@ -32,8 +32,9 @@ type Runtime = cubecl::cuda::CudaRuntime;
 ///
 /// # Example
 ///
-/// ```
-/// let input = vec![0.0, 1.0, 0.0, 0.0];
+/// ```no_run
+/// use gpu_fft::fft;
+/// let input = vec![0.0f32, 1.0, 0.0, 0.0];
 /// let (real, imag) = fft(input);
 /// ```
 pub fn fft(input: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
@@ -56,11 +57,13 @@ pub fn fft(input: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
 ///
 /// # Example
 ///
-/// ```
-/// let real = vec![0.0, 1.0, 0.0, 0.0];
-/// let imag = vec![0.0, 0.0, 0.0, 0.0];
+/// ```no_run
+/// use gpu_fft::ifft;
+/// let real = vec![0.0f32, 1.0, 0.0, 0.0];
+/// let imag = vec![0.0f32, 0.0, 0.0, 0.0];
 /// let time_domain = ifft(real, imag);
 /// ```
 pub fn ifft(input_real: Vec<f32>, input_imag: Vec<f32>) -> Vec<f32> {
     ifft::ifft::<Runtime>(&Default::default(), input_real, input_imag)
 }
+

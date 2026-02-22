@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 use crate::WORKGROUP_SIZE;
 
 #[cube(launch_unchecked)]
-fn precompute_twiddles<F: Float>(twiddles: &mut Array<Line<F>>, #[comptime] n: u32) {
+fn precompute_twiddles<F: Float>(twiddles: &mut Array<Line<F>>, #[comptime] n: usize) {
     let idx = ABSOLUTE_POS;
     if idx < n {
         for k in 0..n {
@@ -25,7 +25,7 @@ fn fft_kernel<F: Float>(
     twiddles: &Array<Line<F>>,
     real_output: &mut Array<Line<F>>,
     imag_output: &mut Array<Line<F>>,
-    #[comptime] n: u32,
+    #[comptime] n: usize,
 ) {
     let idx = ABSOLUTE_POS;
     if idx < n {
@@ -49,7 +49,7 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
     let client = R::client(device);
     let n = input.len();
 
-    let input_handle = client.create(f32::as_bytes(&input));
+    let input_handle = client.create_from_slice(f32::as_bytes(&input));
     let real_handle = client.empty(n * core::mem::size_of::<f32>());
     let imag_handle = client.empty(n * core::mem::size_of::<f32>());
     let twiddles_size = 2 * n * n;
@@ -61,13 +61,14 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
         precompute_twiddles::launch_unchecked::<f32, R>(
             &client,
             CubeCount::Static(num_workgroups, 1, 1),
-            CubeDim::new(WORKGROUP_SIZE, 1, 1),
+            CubeDim::new_1d(WORKGROUP_SIZE),
             ArrayArg::from_raw_parts::<f32>(&twiddles_handle, twiddles_size, 1),
-            n as u32,
+            n,
         )
+        .expect("twiddle precomputation kernel launch failed")
     };
 
-    let twiddles_bytes = client.read_one(twiddles_handle.clone().binding());
+    let twiddles_bytes = client.read_one(twiddles_handle.clone());
     let twiddles = f32::from_bytes(&twiddles_bytes);
     println!("twiddles[{}] - {:#?}", twiddles.len(), &twiddles[0..10]);
     // println!("twiddles[{}] - {:?}", twiddles.len(), twiddles);
@@ -77,19 +78,20 @@ pub fn fft<R: Runtime>(device: &R::Device, input: Vec<f32>) -> (Vec<f32>, Vec<f3
         fft_kernel::launch_unchecked::<f32, R>(
             &client,
             CubeCount::Static(num_workgroups, 1, 1),
-            CubeDim::new(WORKGROUP_SIZE, 1, 1),
+            CubeDim::new_1d(WORKGROUP_SIZE),
             ArrayArg::from_raw_parts::<f32>(&input_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&twiddles_handle, twiddles_size, 1),
             ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
-            n as u32,
+            n,
         )
+        .expect("FFT (twiddles) kernel launch failed")
     };
 
-    let real_bytes = client.read_one(real_handle.binding());
+    let real_bytes = client.read_one(real_handle);
     let real = f32::from_bytes(&real_bytes);
 
-    let imag_bytes = client.read_one(imag_handle.binding());
+    let imag_bytes = client.read_one(imag_handle);
     let imag = f32::from_bytes(&imag_bytes);
 
     println!(

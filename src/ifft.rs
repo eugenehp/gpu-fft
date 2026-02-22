@@ -29,10 +29,13 @@ use crate::WORKGROUP_SIZE;
 ///
 /// # Example
 ///
-/// ```rust
-/// let input_real = vec![1.0, 0.0, 0.0, 0.0]; // Example real input
-/// let input_imag = vec![0.0, 0.0, 0.0, 0.0]; // Example imaginary input
-/// let output = ifft::<YourRuntimeType>(device, input_real, input_imag);
+/// ```ignore
+/// use cubecl::wgpu::WgpuRuntime;
+/// use gpu_fft::ifft::ifft;
+/// let device = Default::default();
+/// let input_real = vec![1.0f32, 0.0, 0.0, 0.0];
+/// let input_imag = vec![0.0f32, 0.0, 0.0, 0.0];
+/// let output = ifft::<WgpuRuntime>(&device, input_real, input_imag);
 /// ```
 ///
 /// # Returns
@@ -44,7 +47,7 @@ fn ifft_kernel<F: Float>(
     input_real: &Array<Line<F>>,
     input_imag: &Array<Line<F>>,
     output: &mut Array<Line<F>>,
-    #[comptime] n: u32,
+    #[comptime] n: usize,
 ) {
     let idx = ABSOLUTE_POS;
     if idx < n {
@@ -86,10 +89,13 @@ fn ifft_kernel<F: Float>(
 ///
 /// # Example
 ///
-/// ```rust
-/// let input_real = vec![1.0, 0.0, 0.0, 0.0]; // Example real input
-/// let input_imag = vec![0.0, 0.0, 0.0, 0.0]; // Example imaginary input
-/// let output = ifft::<YourRuntimeType>(device, input_real, input_imag);
+/// ```ignore
+/// use cubecl::wgpu::WgpuRuntime;
+/// use gpu_fft::ifft::ifft;
+/// let device = Default::default();
+/// let input_real = vec![1.0f32, 0.0, 0.0, 0.0];
+/// let input_imag = vec![0.0f32, 0.0, 0.0, 0.0];
+/// let output = ifft::<WgpuRuntime>(&device, input_real, input_imag);
 /// ```
 ///
 /// # Safety
@@ -105,8 +111,8 @@ pub fn ifft<R: Runtime>(
     let client = R::client(device);
     let n = input_real.len();
 
-    let real_handle = client.create(f32::as_bytes(&input_real));
-    let imag_handle = client.create(f32::as_bytes(&input_imag));
+    let real_handle = client.create_from_slice(f32::as_bytes(&input_real));
+    let imag_handle = client.create_from_slice(f32::as_bytes(&input_imag));
     let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Assuming output is interleaved
 
     let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
@@ -115,15 +121,16 @@ pub fn ifft<R: Runtime>(
         ifft_kernel::launch_unchecked::<f32, R>(
             &client,
             CubeCount::Static(num_workgroups, 1, 1),
-            CubeDim::new(WORKGROUP_SIZE, 1, 1),
+            CubeDim::new_1d(WORKGROUP_SIZE),
             ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
             ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1),
-            n as u32,
+            n,
         )
+        .expect("IFFT kernel launch failed")
     };
 
-    let output_bytes = client.read_one(output_handle.binding());
+    let output_bytes = client.read_one(output_handle);
     let output = f32::from_bytes(&output_bytes);
 
     output.into()

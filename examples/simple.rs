@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use gpu_fft::{fft, ifft, psd, twiddles, utils};
+use gpu_fft::{fft, ifft, psd, utils};
 
 type Runtime = cubecl::wgpu::WgpuRuntime;
 
@@ -40,17 +40,17 @@ pub fn main() {
         println!("Frequency:\t{:.2} Hz, Power: {:.2}", freq, power);
     }
 
-    let n = real.len();
+    let _n = real.len();
     let start_time = Instant::now();
-    let output = ifft::ifft::<Runtime>(&device, real, imag);
+    let _output = ifft::ifft::<Runtime>(&device, real, imag);
     let elapsed_time = start_time.elapsed();
 
     println!("====================");
     println!("\tIFFT {elapsed_time:?}");
     println!("====================");
-    // for i in 0..n {
-    //     let real = output[i];
-    //     let imag = output[i + n]; // Assuming output is interleaved
+    // for i in 0.._n {
+    //     let real = _output[i];
+    //     let imag = _output[i + _n]; // Assuming output is interleaved
     //     println!("Output[{}]: Real: {}, Imag: {}", i, real, imag);
     // }
 }

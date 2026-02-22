@@ -19,11 +19,13 @@ use std::f32::consts::PI;
 ///
 /// # Example
 ///
-/// ```rust
-/// let frequency = 440.0; // A4 note
-/// let sample_rate = 44100.0; // CD quality
-/// let duration = 1.0; // 1 second
+/// ```
+/// # use gpu_fft::utils::generate_sine_wave;
+/// let frequency = 440.0f32;   // A4 note
+/// let sample_rate = 44100.0f32; // CD quality
+/// let duration = 1.0f32;       // 1 second
 /// let sine_wave = generate_sine_wave(frequency, sample_rate, duration);
+/// assert_eq!(sine_wave.len(), 44100);
 /// ```
 pub fn generate_sine_wave(frequency: f32, sample_rate: f32, duration: f32) -> Vec<f32> {
     let num_samples = (sample_rate * duration) as usize;
@@ -55,10 +57,13 @@ pub fn generate_sine_wave(frequency: f32, sample_rate: f32, duration: f32) -> Ve
 ///
 /// # Example
 ///
-/// ```rust
-/// let n = 1024; // Number of frequency bins
-/// let sample_rate = 44100.0; // Sample rate in Hz
+/// ```
+/// # use gpu_fft::utils::calculate_frequencies;
+/// let n = 1024usize;           // Number of frequency bins
+/// let sample_rate = 44100.0f32; // Sample rate in Hz
 /// let frequencies = calculate_frequencies(n, sample_rate);
+/// assert_eq!(frequencies.len(), 1024);
+/// assert_eq!(frequencies[0], 0.0);
 /// ```
 pub fn calculate_frequencies(n: usize, sample_rate: f32) -> Vec<f32> {
     (0..n).map(|k| k as f32 * sample_rate / n as f32).collect()
@@ -85,11 +90,16 @@ pub fn calculate_frequencies(n: usize, sample_rate: f32) -> Vec<f32> {
 ///
 /// # Example
 ///
-/// ```rust
-/// let psd = vec![0.1, 0.5, 0.3, 0.7, 0.2]; // Example PSD values
-/// let frequencies = vec![0.0, 100.0, 200.0, 300.0, 400.0]; // Corresponding frequencies
-/// let threshold = 0.4; // Threshold for dominance
+/// ```
+/// # use gpu_fft::utils::find_dominant_frequencies;
+/// let psd = vec![0.1f32, 0.5, 0.3, 0.7, 0.2]; // Example PSD values
+/// let frequencies = vec![0.0f32, 100.0, 200.0, 300.0, 400.0]; // Corresponding frequencies
+/// let threshold = 0.4f32;
 /// let dominant_freqs = find_dominant_frequencies(psd, frequencies, threshold);
+/// // Bins 1 (100 Hz) and 3 (300 Hz) are local peaks above the threshold.
+/// assert_eq!(dominant_freqs.len(), 2);
+/// assert_eq!(dominant_freqs[0].0, 100.0);
+/// assert_eq!(dominant_freqs[1].0, 300.0);
 /// ```
 pub fn find_dominant_frequencies(
     psd: Vec<f32>,

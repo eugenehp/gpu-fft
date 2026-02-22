@@ -12,7 +12,7 @@ homepage = "https://github.com/eugenehp/gpu-fft"
 documentation = "https://docs.rs/gpu-fft" 
 
 [dependencies]
-cubecl = { version = "0.4.0" }
+cubecl = { version = "0.9.0" }
 
 [features]
 default = ["wgpu"]
@@ -20,7 +20,7 @@ cuda = ["cubecl/cuda"]
 wgpu = ["cubecl/wgpu"]
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.8.2"
 
 [[bench]]
 harness = false

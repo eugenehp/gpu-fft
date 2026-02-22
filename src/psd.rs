@@ -17,10 +17,12 @@
 ///
 /// # Example
 ///
-/// ```rust
-/// let real = vec![1.0, 0.0, 0.0, 0.0]; // Example real input
-/// let imag = vec![0.0, 0.0, 0.0, 0.0]; // Example imaginary input
+/// ```
+/// # use gpu_fft::psd::psd;
+/// let real = vec![1.0f32, 0.0, 0.0, 0.0];
+/// let imag = vec![0.0f32, 0.0, 0.0, 0.0];
 /// let psd_values = psd(real, imag);
+/// assert_eq!(psd_values.len(), 4);
 /// ```
 ///
 /// # Note
