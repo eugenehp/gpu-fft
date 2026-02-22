@@ -1,131 +1,104 @@
 use cubecl::prelude::*;
-use std::f32::consts::PI;
 
-use crate::WORKGROUP_SIZE;
+use crate::butterfly::{bit_reverse, butterfly_inner, butterfly_stage};
+use crate::{TILE_BITS, TILE_SIZE, WORKGROUP_SIZE};
 
-/// Performs a Fast Fourier Transform (FFT) on the input data.
+/// Computes the Cooley-Tukey radix-2 DIT FFT of `input`.
 ///
-/// This kernel computes the FFT of a given input array of complex numbers represented as
-/// separate real and imaginary parts. The FFT is computed using the Cooley-Tukey algorithm,
-/// which is efficient for large datasets.
+/// If `input.len()` is not a power of two the signal is **zero-padded** to the
+/// next power of two. Both returned vectors have length `input.len().next_power_of_two()`.
 ///
-/// # Parameters
+/// ### Launch strategy
 ///
-/// - `input`: An array of complex numbers represented as lines of type `Line<F>`, where `F`
-///   is a floating-point type. The input array should contain `n` complex numbers.
-/// - `real_output`: A mutable reference to an array of lines where the real parts of the
-///   FFT output will be stored.
-/// - `imag_output`: A mutable reference to an array of lines where the imaginary parts of
-///   the FFT output will be stored.
-/// - `n`: The number of complex samples in the input array. This value is provided at compile-time.
+/// All stages where `half_stride < TILE_SIZE / 2` are fused into a **single**
+/// `butterfly_inner` dispatch using workgroup shared memory — eliminating the
+/// per-stage kernel-launch overhead that dominates small-N performance.
+/// The remaining outer stages (one per stage) use `butterfly_stage` over global
+/// memory.
 ///
-/// # Safety
-///
-/// This function is marked as `unsafe` because it performs raw pointer operations and assumes
-/// that the input and output arrays are correctly sized and aligned. The caller must ensure
-/// that the input data is valid and that the output arrays have sufficient space to store
-/// the results.
+/// | N        | Launches |
+/// |----------|----------|
+/// | ≤ 1 024  | 1        |
+/// | 4 096    | 3        |
+/// | 65 536   | 7        |
 ///
 /// # Example
 ///
 /// ```ignore
 /// use cubecl::wgpu::WgpuRuntime;
 /// use gpu_fft::fft::fft;
-/// let device = Default::default();
-/// let input = vec![1.0f32, 0.0, 0.0, 0.0];
-/// let (real, imag) = fft::<WgpuRuntime>(&device, input);
+/// let (real, imag) = fft::<WgpuRuntime>(&Default::default(), &[1.0f32, 0.0, 0.0, 0.0]);
 /// ```
-///
-/// # Returns
-///
-/// This function does not return a value directly. Instead, it populates the `output` array
-/// with the real and imaginary parts of the FFT result interleaved.
-#[cube(launch)]
-fn fft_kernel<F: Float>(input: &Array<Line<F>>, output: &mut Array<Line<F>>, #[comptime] n: usize) {
-    let idx = ABSOLUTE_POS;
-    if idx < n {
-        let mut real = Line::<F>::new(F::new(0.0));
-        let mut imag = Line::<F>::new(F::new(0.0));
-
-        // Precompute the angle increment
-        let angle_increment = -2.0 * PI / n as f32;
-
-        // #[unroll(true)]
-        for k in 0..n {
-            let angle = F::cast_from(angle_increment) * F::cast_from(k) * F::cast_from(idx);
-            let (cos_angle, sin_angle) = (F::cos(angle), F::sin(angle));
-
-            // Combine the multiplication and addition
-            real += input[k] * Line::new(cos_angle);
-            imag += input[k] * Line::new(sin_angle);
-        }
-
-        // Store the real and imaginary parts in an interleaved manner
-        output[idx * 2] = Line::new(F::cast_from(real)); // Real part
-        output[idx * 2 + 1] = Line::new(F::cast_from(imag)); // Imaginary part
-    }
-}
-
-/// Computes the Fast Fourier Transform (FFT) of a vector of f32 input data.
-///
-/// This function initializes the FFT computation on the provided input vector, launching
-/// the FFT kernel to perform the transformation. The input data is expected to be in the
-/// form of real numbers, which are treated as complex numbers with zero imaginary parts.
-///
-/// # Parameters
-///
-/// - `device`: A reference to the device on which the FFT computation will be performed.
-/// - `input`: A vector of `f32` values representing the real parts of the input data.
-///
-/// # Returns
-///
-/// A tuple containing two vectors:
-/// - A vector of `f32` values representing the real parts of the FFT output.
-/// - A vector of `f32` values representing the imaginary parts of the FFT output.
-///
-/// # Example
-///
-/// ```ignore
-/// use cubecl::wgpu::WgpuRuntime;
-/// use gpu_fft::fft::fft;
-/// let device = Default::default();
-/// let input = vec![1.0f32, 0.0, 0.0, 0.0];
-/// let (real, imag) = fft::<WgpuRuntime>(&device, input);
-/// ```
-///
-/// # Safety
-///
-/// This function uses unsafe operations to interact with the underlying runtime and device.
-/// The caller must ensure that the input data is valid and that the device is properly set up
-/// for computation.
 #[must_use]
 pub fn fft<R: Runtime>(device: &R::Device, input: &[f32]) -> (Vec<f32>, Vec<f32>) {
+    let n_orig = input.len();
+    let n = n_orig.next_power_of_two();
+
+    // Edge case: trivial transform for zero or single element.
+    if n <= 1 {
+        let mut real = vec![0.0f32; n];
+        if n == 1 && n_orig == 1 {
+            real[0] = input[0];
+        }
+        return (real, vec![0.0f32; n]);
+    }
+
+    let m = n.ilog2() as usize;
+
+    // ── Bit-reverse permute the input on the CPU (O(N)) ───────────────────────
+    let mut real = vec![0.0f32; n];
+    for (i, &v) in input.iter().enumerate() {
+        real[bit_reverse(i, m as u32)] = v;
+    }
+    let imag = vec![0.0f32; n];
+
     let client = R::client(device);
-    let n = input.len();
+    let real_handle = client.create_from_slice(f32::as_bytes(&real));
+    let imag_handle = client.create_from_slice(f32::as_bytes(&imag));
 
-    let input_handle = client.create_from_slice(f32::as_bytes(input));
-    let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Adjust for interleaved output
-
-    let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    // ── Inner stages: fused into one launch via shared memory ─────────────────
+    // inner_stages = how many stages fit inside a TILE_SIZE-element workgroup tile.
+    // tile         = actual tile size (≤ TILE_SIZE; equals N when N < TILE_SIZE).
+    let inner_stages = m.min(TILE_BITS);
+    let tile         = TILE_SIZE.min(n);     // comptime specialisation value
+    let num_tiles    = (n / TILE_SIZE).max(1) as u32;
+    let wg_threads   = (n / 2).min(TILE_SIZE / 2) as u32; // threads per workgroup
 
     unsafe {
-        fft_kernel::launch::<f32, R>(
+        butterfly_inner::launch::<f32, R>(
             &client,
-            CubeCount::Static(num_workgroups, 1, 1),
-            CubeDim::new_1d(WORKGROUP_SIZE),
-            ArrayArg::from_raw_parts::<f32>(&input_handle, n, 1),
-            ArrayArg::from_raw_parts::<f32>(&output_handle, n * 2, 1), // Adjust for interleaved output
-            n,
+            CubeCount::Static(num_tiles, 1, 1),
+            CubeDim::new_1d(wg_threads),
+            ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
+            ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
+            tile,         // comptime
+            inner_stages, // comptime
+            true,         // comptime — forward FFT
         )
-        .expect("FFT kernel launch failed")
+        .expect("FFT inner (shared-memory) launch failed")
     };
 
-    let output_bytes = client.read_one(output_handle);
-    let output = f32::from_bytes(&output_bytes);
+    // ── Outer stages: one launch per stage over global memory ─────────────────
+    let outer_wg = ((n / 2) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    for s in inner_stages..m {
+        let hs = 1_usize << s;
+        unsafe {
+            butterfly_stage::launch::<f32, R>(
+                &client,
+                CubeCount::Static(outer_wg, 1, 1),
+                CubeDim::new_1d(WORKGROUP_SIZE),
+                ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
+                ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
+                n,    // comptime
+                hs,   // comptime — unique kernel per stage
+                true, // comptime — forward FFT
+            )
+            .expect("FFT outer butterfly launch failed")
+        };
+    }
 
-    // Split the interleaved output into real and imaginary parts
-    let real: Vec<f32> = output.iter().step_by(2).cloned().collect();
-    let imag: Vec<f32> = output.iter().skip(1).step_by(2).cloned().collect();
+    let real_out = f32::from_bytes(&client.read_one(real_handle)).to_vec();
+    let imag_out = f32::from_bytes(&client.read_one(imag_handle)).to_vec();
 
-    (real, imag)
+    (real_out, imag_out)
 }

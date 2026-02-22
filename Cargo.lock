@@ -1378,7 +1378,7 @@ dependencies = [
 
 [[package]]
 name = "gpu-fft"
-version = "0.0.2"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "cubecl",

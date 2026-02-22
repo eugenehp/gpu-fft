@@ -39,3 +39,4 @@ python3 scripts/export_bench.py < "$TMP" | tee "$LATEST" > "$ARCHIVE_DIR/$TIMEST
 echo ""
 echo "✓  Latest  → $LATEST"
 echo "✓  Archive → $ARCHIVE_DIR/$TIMESTAMP.md"
+echo "✓  Charts  → $(dirname "$LATEST")/charts/"

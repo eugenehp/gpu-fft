@@ -1,15 +1,26 @@
 pub mod fft;
 pub mod ifft;
 pub mod psd;
+pub mod utils;
+
+// Shared Cooley-Tukey butterfly kernel and helpers; not part of the public API.
+pub(crate) mod butterfly;
 // Work-in-progress precomputed-twiddle path; not yet wired into the public API.
 #[allow(dead_code)]
 pub(crate) mod twiddles;
-pub mod utils;
 
-// The general advice for WebGPU is to choose a workgroup size of 64
-// Common sizes are 32, 64, 128, 256, or 512 threads per workgroup.
-// Apple Metal supports a maximum workgroup size of 1024 threads.
+// 1024 threads per workgroup saturates most desktop GPUs and is the maximum
+// allowed by Metal / Vulkan / WebGPU on typical hardware.
 pub(crate) const WORKGROUP_SIZE: u32 = 1024;
+
+// Shared-memory tile for the inner (fused) butterfly kernel.
+// Each workgroup loads TILE_SIZE elements into two SharedMemory<f32> arrays:
+//   2 × TILE_SIZE × 4 bytes = 8 192 bytes < 16 384 byte WebGPU minimum.
+// TILE_THREADS = TILE_SIZE / 2 = the number of threads per workgroup in the
+// inner kernel (one thread per butterfly pair).
+// TILE_BITS    = log₂(TILE_SIZE) = the number of stages that fit inside one tile.
+pub(crate) const TILE_SIZE: usize = 1024;
+pub(crate) const TILE_BITS: usize = 10; // log₂(TILE_SIZE) = log₂(1024)
 
 #[cfg(feature = "wgpu")]
 type Runtime = cubecl::wgpu::WgpuRuntime;
@@ -17,20 +28,14 @@ type Runtime = cubecl::wgpu::WgpuRuntime;
 #[cfg(feature = "cuda")]
 type Runtime = cubecl::cuda::CudaRuntime;
 
-/// Computes the Fast Fourier Transform (FFT) of the given input vector.
+/// Computes the Cooley-Tukey radix-2 FFT of a real-valued signal.
 ///
-/// This function takes a vector of real numbers as input and returns a tuple
-/// containing two vectors: the real and imaginary parts of the FFT result.
+/// Runs in **O(N log₂ N)** on the GPU using `log₂ N` butterfly-stage kernel
+/// dispatches of N/2 threads each.
 ///
-/// # Parameters
-///
-/// - `input`: A vector of `f32` representing the input signal in the time domain.
-///
-/// # Returns
-///
-/// A tuple containing two vectors:
-/// - A vector of `f32` representing the real part of the FFT output.
-/// - A vector of `f32` representing the imaginary part of the FFT output.
+/// If `input.len()` is not a power of two the signal is zero-padded to the
+/// next power of two before the transform.  Both returned vectors have length
+/// `input.len().next_power_of_two()`.
 ///
 /// # Example
 ///
@@ -38,25 +43,26 @@ type Runtime = cubecl::cuda::CudaRuntime;
 /// use gpu_fft::fft;
 /// let input = vec![0.0f32, 1.0, 0.0, 0.0];
 /// let (real, imag) = fft(&input);
+/// assert_eq!(real.len(), 4); // already a power of two
 /// ```
 #[must_use]
 pub fn fft(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
     fft::fft::<Runtime>(&Default::default(), input)
 }
 
-/// Computes the Inverse Fast Fourier Transform (IFFT) of the given real and imaginary parts.
+/// Computes the Cooley-Tukey radix-2 IFFT of a complex spectrum.
 ///
-/// This function takes the real and imaginary parts of a frequency domain signal
-/// and returns the corresponding time domain signal as a vector of real numbers.
+/// Runs in **O(N log₂ N)** using `log₂ N` butterfly-stage kernels with
+/// positive twiddle factors, followed by a CPU-side 1/N scaling pass.
 ///
-/// # Parameters
-///
-/// - `input_real`: A vector of `f32` representing the real part of the frequency domain signal.
-/// - `input_imag`: A vector of `f32` representing the imaginary part of the frequency domain signal.
+/// Both slices must have the **same power-of-two length** — i.e. pass the
+/// direct output of [`fft`] unchanged.
 ///
 /// # Returns
 ///
-/// A vector of `f32` representing the reconstructed time domain signal.
+/// A `Vec<f32>` of length `2 * N`:
+/// - `output[0..N]` — reconstructed real signal
+/// - `output[N..2N]` — reconstructed imaginary signal (≈ 0 for real inputs)
 ///
 /// # Example
 ///
@@ -64,7 +70,8 @@ pub fn fft(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
 /// use gpu_fft::ifft;
 /// let real = vec![0.0f32, 1.0, 0.0, 0.0];
 /// let imag = vec![0.0f32, 0.0, 0.0, 0.0];
-/// let time_domain = ifft(&real, &imag);
+/// let output = ifft(&real, &imag);
+/// let reconstructed = &output[..4]; // real part
 /// ```
 #[must_use]
 pub fn ifft(input_real: &[f32], input_imag: &[f32]) -> Vec<f32> {

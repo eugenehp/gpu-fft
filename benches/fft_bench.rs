@@ -6,8 +6,10 @@ use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, 
 type Runtime = cubecl::wgpu::WgpuRuntime;
 
 /// Input sizes (number of samples) swept by every benchmark group.
-/// Kept modest because the current DFT kernel is O(N²).
-const SIZES: &[usize] = &[64, 256, 1_024, 4_096];
+/// All must be powers of two (the radix-2 kernel requires this).
+/// The algorithm is O(N log₂ N) so even N = 1 M completes in milliseconds;
+/// add larger entries here to profile at production-scale signal lengths.
+const SIZES: &[usize] = &[256, 1_024, 4_096, 16_384, 65_536];
 
 /// Single-frequency sine wave — more realistic than a ramp and signal-independent
 /// in terms of DFT computation time.
