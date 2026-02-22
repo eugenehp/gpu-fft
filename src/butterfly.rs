@@ -142,6 +142,157 @@ pub fn butterfly_inner<F: Float>(
     imag[base + local + half_tile] = s_imag[local + half_tile];
 }
 
+// ── Batched outer butterfly stage ─────────────────────────────────────────────
+
+/// Batched single DIT butterfly stage over global memory.
+///
+/// Processes `batch_size` independent signals of length `n` packed end-to-end in
+/// `real` / `imag` (signal `b` starts at offset `b * n`).
+///
+/// Uses a flat 1-D dispatch — `ABSOLUTE_POS` (usize) encodes both the signal
+/// index and the butterfly-pair position within it:
+///
+/// ```text
+/// signal = tid / (n / 2)
+/// pos    = tid % (n / 2)
+/// ```
+///
+/// ### Launch parameters
+/// ```text
+/// CubeCount = (outer_wg, 1, 1)
+///             where outer_wg = ceil(batch_size * n/2 / WORKGROUP_SIZE)
+/// CubeDim   = (WORKGROUP_SIZE, 1, 1)
+/// ```
+///
+/// `batch_size` is comptime so the guard `tid < batch_size * (n/2)` can be
+/// evaluated as a compile-time constant, keeping the per-stage kernel cost down.
+#[cube(launch)]
+pub fn butterfly_stage_batch<F: Float>(
+    real: &mut Array<F>,
+    imag: &mut Array<F>,
+    #[comptime] n: usize,
+    #[comptime] half_stride: usize,
+    #[comptime] batch_size: usize,
+    #[comptime] forward: bool,
+) {
+    let tid = ABSOLUTE_POS; // usize — flat global thread index
+
+    if tid < batch_size * (n / 2) {
+        let signal = tid / (n / 2);
+        let pos    = tid % (n / 2);
+        let offset = signal * n;
+
+        let k = pos % half_stride;
+        let i = (pos / half_stride) * (half_stride * 2) + k;
+        let j = i + half_stride;
+
+        let sign  = if forward { F::new(-1.0) } else { F::new(1.0) };
+        let angle = sign * F::new(PI) * F::cast_from(k) / F::cast_from(half_stride);
+        let cos_a = F::cos(angle);
+        let sin_a = F::sin(angle);
+
+        let ur = real[offset + i];
+        let ui = imag[offset + i];
+        let vr = cos_a * real[offset + j] - sin_a * imag[offset + j];
+        let vi = sin_a * real[offset + j] + cos_a * imag[offset + j];
+
+        real[offset + i] = ur + vr;
+        imag[offset + i] = ui + vi;
+        real[offset + j] = ur - vr;
+        imag[offset + j] = ui - vi;
+    }
+}
+
+// ── Batched inner (shared-memory) butterfly kernel ────────────────────────────
+
+/// Multi-stage DIT butterfly kernel using shared memory — batched over many signals.
+///
+/// Uses a flat 1-D dispatch: each workgroup of `tile/2` threads handles exactly
+/// one tile of one signal.  `ABSOLUTE_POS` (usize) encodes both the signal and
+/// tile within the signal:
+///
+/// ```text
+/// local       = ABSOLUTE_POS % half_tile          (thread position within tile)
+/// tile_global = ABSOLUTE_POS / half_tile           (global tile index)
+/// signal      = tile_global / tiles_per_signal
+/// tile_in_sig = tile_global % tiles_per_signal
+/// base        = signal * n + tile_in_sig * tile
+/// ```
+///
+/// `tiles_per_signal = (n / tile).max(1)` — derived from the comptime params `n`
+/// and `tile`; no separate `batch_size` comptime param is needed because the
+/// dispatch count already encodes it.
+///
+/// ### Launch parameters
+/// ```text
+/// CubeCount = (tiles_per_signal * batch_size, 1, 1)
+/// CubeDim   = (tile / 2, 1, 1)   — one thread per butterfly pair in the tile
+/// ```
+///
+/// Shared-memory budget: `2 * tile * sizeof(F)` bytes — same as the scalar kernel.
+#[cube(launch)]
+pub fn butterfly_inner_batch<F: Float>(
+    real: &mut Array<F>,
+    imag: &mut Array<F>,
+    #[comptime] n: usize,      // per-signal length (power-of-two, padded)
+    #[comptime] tile: usize,   // elements per workgroup tile (≤ n, power-of-two)
+    #[comptime] stages: usize, // number of butterfly stages to fuse
+    #[comptime] forward: bool,
+) {
+    let mut s_real = SharedMemory::<F>::new(tile);
+    let mut s_imag = SharedMemory::<F>::new(tile);
+
+    let half_tile        = tile / 2;        // threads per workgroup (comptime)
+    let tiles_per_signal = (n / tile).max(1); // comptime
+
+    let tid         = ABSOLUTE_POS;
+    let local       = tid % half_tile;          // local thread index within tile
+    let tile_global = tid / half_tile;          // global tile index across all signals
+    let signal      = tile_global / tiles_per_signal;
+    let tile_in_sig = tile_global % tiles_per_signal;
+    let base        = signal * n + tile_in_sig * tile;
+
+    // ── Load from global → shared ─────────────────────────────────────────────
+    s_real[local]             = real[base + local];
+    s_real[local + half_tile] = real[base + local + half_tile];
+    s_imag[local]             = imag[base + local];
+    s_imag[local + half_tile] = imag[base + local + half_tile];
+
+    sync_cube();
+
+    // ── Fused butterfly stages in shared memory ───────────────────────────────
+    for s in 0..stages {
+        let hs = 1_usize << s;
+
+        let k = local % hs;
+        let i = (local / hs) * (hs * 2) + k;
+        let j = i + hs;
+
+        let sign  = if forward { F::new(-1.0) } else { F::new(1.0) };
+        let angle = sign * F::new(PI) * F::cast_from(k) / F::cast_from(hs);
+        let cos_a = F::cos(angle);
+        let sin_a = F::sin(angle);
+
+        let ur = s_real[i];
+        let ui = s_imag[i];
+        let vr = cos_a * s_real[j] - sin_a * s_imag[j];
+        let vi = sin_a * s_real[j] + cos_a * s_imag[j];
+
+        s_real[i] = ur + vr;
+        s_imag[i] = ui + vi;
+        s_real[j] = ur - vr;
+        s_imag[j] = ui - vi;
+
+        sync_cube();
+    }
+
+    // ── Write back shared → global ────────────────────────────────────────────
+    real[base + local]             = s_real[local];
+    real[base + local + half_tile] = s_real[local + half_tile];
+    imag[base + local]             = s_imag[local];
+    imag[base + local + half_tile] = s_imag[local + half_tile];
+}
+
 // ── CPU helper ────────────────────────────────────────────────────────────────
 
 /// Bit-reversal permutation index: reverses the lowest `bits` bits of `x`.

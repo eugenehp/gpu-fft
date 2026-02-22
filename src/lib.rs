@@ -50,6 +50,32 @@ pub fn fft(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
     fft::fft::<Runtime>(&Default::default(), input)
 }
 
+/// Computes the Cooley-Tukey radix-2 FFT of a **batch** of real-valued signals
+/// in a single GPU pass.
+///
+/// All signals are zero-padded to the next power-of-two of the **longest** signal
+/// so they share a common length `n`.  The batch is processed with a 2-D kernel
+/// dispatch — the Y-dimension selects the signal, and the X-dimension covers
+/// butterfly pairs within a signal.
+///
+/// Returns one `(real, imag)` pair per input signal, each of length `n`.
+///
+/// # Example
+///
+/// ```no_run
+/// use gpu_fft::fft_batch;
+/// let signals = vec![
+///     vec![1.0f32, 0.0, 0.0, 0.0], // impulse → all-ones spectrum
+///     vec![1.0f32, 1.0, 1.0, 1.0], // DC      → [4, 0, 0, 0]
+/// ];
+/// let results = fft_batch(&signals);
+/// assert_eq!(results.len(), 2);
+/// ```
+#[must_use]
+pub fn fft_batch(signals: &[Vec<f32>]) -> Vec<(Vec<f32>, Vec<f32>)> {
+    fft::fft_batch::<Runtime>(&Default::default(), signals)
+}
+
 /// Computes the Cooley-Tukey radix-2 IFFT of a complex spectrum.
 ///
 /// Runs in **O(N log₂ N)** using `log₂ N` butterfly-stage kernels with
@@ -76,5 +102,28 @@ pub fn fft(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
 #[must_use]
 pub fn ifft(input_real: &[f32], input_imag: &[f32]) -> Vec<f32> {
     ifft::ifft::<Runtime>(&Default::default(), input_real, input_imag)
+}
+
+/// Computes the Cooley-Tukey radix-2 IFFT for a **batch** of complex spectra
+/// in a single GPU pass.
+///
+/// Each element of `signals` is a `(real, imag)` pair — the direct output of
+/// [`fft_batch`].  All pairs must share the **same power-of-two length**.
+///
+/// Returns one `Vec<f32>` per input signal, each of length `2 * n`:
+/// - `[0..n]`  — reconstructed real signal
+/// - `[n..2n]` — reconstructed imaginary signal (≈ 0 for real-valued inputs)
+///
+/// # Example
+///
+/// ```no_run
+/// use gpu_fft::{fft_batch, ifft_batch};
+/// let signals = vec![vec![1.0f32, 2.0, 3.0, 4.0]];
+/// let spectra = fft_batch(&signals);
+/// let recovered = ifft_batch(&spectra);
+/// ```
+#[must_use]
+pub fn ifft_batch(signals: &[(Vec<f32>, Vec<f32>)]) -> Vec<Vec<f32>> {
+    ifft::ifft_batch::<Runtime>(&Default::default(), signals)
 }
 
