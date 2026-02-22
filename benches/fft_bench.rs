@@ -11,6 +11,20 @@ type Runtime = cubecl::wgpu::WgpuRuntime;
 /// O(N log N) — even N = 65 536 completes in milliseconds on a GPU.
 const SIZES: &[usize] = &[256, 1_024, 4_096, 16_384, 65_536];
 
+/// Signal lengths used by the radix-4 outer-stage benchmarks.
+///
+/// These are all sizes where at least one outer stage exists (N > TILE_SIZE =
+/// 1 024), covering every distinct outer-stage dispatch pattern:
+///
+/// | N      | m  | Outer stages           |
+/// |--------|----|------------------------|
+/// | 2 048  | 11 | 1 r2  (trailing only)  |
+/// | 4 096  | 12 | 1 r4                   |
+/// | 8 192  | 13 | 1 r4 + 1 r2 (mixed)    |
+/// | 16 384 | 14 | 2 r4                   |
+/// | 65 536 | 16 | 3 r4                   |
+const RADIX4_OUTER_SIZES: &[usize] = &[2_048, 4_096, 8_192, 16_384, 65_536];
+
 /// Batch sizes swept when signal length is held constant.
 const BATCH_SIZES: &[usize] = &[1, 4, 16, 64];
 
@@ -398,6 +412,173 @@ fn bench_roundtrip_batch_signal_len(c: &mut Criterion) {
     group.finish();
 }
 
+// ── Radix-4 outer stage — scalar FFT ─────────────────────────────────────────
+
+/// FFT throughput across all sizes that activate outer stages.
+///
+/// Covers every distinct outer-stage dispatch pattern introduced by the
+/// radix-4 kernel — pure trailing-r2, pure r4, and mixed r4+r2 — so a
+/// single benchmark run shows how the launch-count reduction scales with N.
+fn bench_fft_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("fft_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let input = sine_wave(n);
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &input, |b, input| {
+            b.iter_batched(
+                || input.clone(),
+                |inp| gpu_fft::fft::fft::<Runtime>(&device, &inp),
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+// ── Radix-4 outer stage — scalar IFFT ────────────────────────────────────────
+
+/// IFFT throughput across all sizes that activate outer stages.
+///
+/// Spectra are pre-computed outside the timed loop so only the butterfly
+/// passes and the 1/N CPU scaling are measured.
+fn bench_ifft_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("ifft_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let (real, imag) = gpu_fft::fft::fft::<Runtime>(&device, &sine_wave(n));
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(n),
+            &(real, imag),
+            |b, (real, imag)| {
+                b.iter_batched(
+                    || (real.clone(), imag.clone()),
+                    |(re, im)| gpu_fft::ifft::ifft::<Runtime>(&device, &re, &im),
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ── Radix-4 outer stage — scalar round-trip ───────────────────────────────────
+
+/// End-to-end FFT → IFFT latency across all sizes that activate outer stages.
+fn bench_roundtrip_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("roundtrip_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let input = sine_wave(n);
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &input, |b, input| {
+            b.iter_batched(
+                || input.clone(),
+                |inp| {
+                    let (re, im) = gpu_fft::fft::fft::<Runtime>(&device, &inp);
+                    gpu_fft::ifft::ifft::<Runtime>(&device, &re, &im)
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+// ── Radix-4 outer stage — batch FFT ──────────────────────────────────────────
+
+/// Batched FFT throughput across all outer-stage sizes with batch fixed at
+/// `BATCH_FIXED`.
+///
+/// Complements `bench_fft_batch_signal_len` with the two sizes (2 048 and
+/// 8 192) not included in the standard `SIZES` sweep.
+fn bench_fft_batch_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("fft_batch_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let batch = make_batch(BATCH_FIXED, n);
+        group.throughput(Throughput::Elements((BATCH_FIXED * n) as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &batch, |b, batch| {
+            b.iter_batched(
+                || batch.clone(),
+                |b| gpu_fft::fft::fft_batch::<Runtime>(&device, &b),
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+// ── Radix-4 outer stage — batch IFFT ─────────────────────────────────────────
+
+/// Batched IFFT throughput across all outer-stage sizes with batch fixed at
+/// `BATCH_FIXED`.
+fn bench_ifft_batch_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("ifft_batch_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let spectra = make_spectra(&device, BATCH_FIXED, n);
+        group.throughput(Throughput::Elements((BATCH_FIXED * n) as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &spectra, |b, spectra| {
+            b.iter_batched(
+                || spectra.clone(),
+                |sp| gpu_fft::ifft::ifft_batch::<Runtime>(&device, &sp),
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+// ── Radix-4 outer stage — batch round-trip ────────────────────────────────────
+
+/// End-to-end `fft_batch` → `ifft_batch` latency across all outer-stage sizes
+/// with batch fixed at `BATCH_FIXED`.
+fn bench_roundtrip_batch_radix4_outer(c: &mut Criterion) {
+    let device = cubecl::wgpu::WgpuDevice::default();
+    let mut group = c.benchmark_group("roundtrip_batch_radix4_outer");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    for &n in RADIX4_OUTER_SIZES {
+        let batch = make_batch(BATCH_FIXED, n);
+        group.throughput(Throughput::Elements((BATCH_FIXED * n) as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &batch, |b, batch| {
+            b.iter_batched(
+                || batch.clone(),
+                |b| {
+                    let spectra = gpu_fft::fft::fft_batch::<Runtime>(&device, &b);
+                    gpu_fft::ifft::ifft_batch::<Runtime>(&device, &spectra)
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     // scalar baselines
@@ -415,5 +596,13 @@ criterion_group!(
     // batch round-trip
     bench_roundtrip_batch,
     bench_roundtrip_batch_signal_len,
+    // radix-4 outer stage — scalar
+    bench_fft_radix4_outer,
+    bench_ifft_radix4_outer,
+    bench_roundtrip_radix4_outer,
+    // radix-4 outer stage — batch (batch = BATCH_FIXED)
+    bench_fft_batch_radix4_outer,
+    bench_ifft_batch_radix4_outer,
+    bench_roundtrip_batch_radix4_outer,
 );
 criterion_main!(benches);

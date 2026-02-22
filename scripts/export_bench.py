@@ -81,6 +81,16 @@ _PALETTE: dict[str, str] = {
     # ── batch round-trip — amber / orange family ──────────────────────────────
     "roundtrip_batch":            "#d97706",  # amber-600
     "roundtrip_batch_signal_len": "#ea580c",  # orange-600
+
+    # ── radix-4 outer stage — scalar (darker shades of baselines) ────────────
+    "fft_radix4_outer":           "#1d4ed8",  # blue-700
+    "ifft_radix4_outer":          "#047857",  # emerald-700
+    "roundtrip_radix4_outer":     "#b91c1c",  # red-700
+
+    # ── radix-4 outer stage — batch (indigo / rose / yellow families) ─────────
+    "fft_batch_radix4_outer":     "#4338ca",  # indigo-700
+    "ifft_batch_radix4_outer":    "#0e7490",  # cyan-700
+    "roundtrip_batch_radix4_outer": "#b45309", # amber-700
 }
 
 # Sub-series colours for the head-to-head comparison groups.
@@ -110,6 +120,14 @@ _MARKERS: dict[str, str] = {
     # batch round-trip
     "roundtrip_batch":            "v",   # triangle-down
     "roundtrip_batch_signal_len": "v",
+    # radix-4 outer — scalar (hollow variants of baseline markers)
+    "fft_radix4_outer":           "o",
+    "ifft_radix4_outer":          "s",
+    "roundtrip_radix4_outer":     "^",
+    # radix-4 outer — batch
+    "fft_batch_radix4_outer":     "D",
+    "ifft_batch_radix4_outer":    "P",
+    "roundtrip_batch_radix4_outer": "v",
 }
 
 # Sub-series markers / line-styles for vs_sequential groups.
@@ -130,6 +148,13 @@ _LABELS: dict[str, str] = {
     "ifft_batch_signal_len":      "ifft_batch  (batch=16)",
     "roundtrip_batch":            "roundtrip_batch  (sweep batch)",
     "roundtrip_batch_signal_len": "roundtrip_batch  (batch=16)",
+    # radix-4 outer stage groups
+    "fft_radix4_outer":           "fft  (radix-4 outer, scalar)",
+    "ifft_radix4_outer":          "ifft  (radix-4 outer, scalar)",
+    "roundtrip_radix4_outer":     "roundtrip  (radix-4 outer, scalar)",
+    "fft_batch_radix4_outer":     "fft_batch  (radix-4 outer, batch=16)",
+    "ifft_batch_radix4_outer":    "ifft_batch  (radix-4 outer, batch=16)",
+    "roundtrip_batch_radix4_outer": "roundtrip_batch  (radix-4 outer, batch=16)",
 }
 
 # Groups whose primary x-axis is signal length N.
@@ -138,6 +163,13 @@ _SIGNAL_LEN_GROUPS = frozenset({
     "fft_batch_signal_len",
     "ifft_batch_signal_len",
     "roundtrip_batch_signal_len",
+    # radix-4 outer stage groups
+    "fft_radix4_outer",
+    "ifft_radix4_outer",
+    "roundtrip_radix4_outer",
+    "fft_batch_radix4_outer",
+    "ifft_batch_radix4_outer",
+    "roundtrip_batch_radix4_outer",
 })
 
 # Groups whose primary x-axis is batch size.
@@ -500,6 +532,37 @@ def generate_charts(rows: list[dict]) -> dict[str, Path]:
     if vs_names:
         paths["vs_sequential"] = _vs_chart(rows, vs_names)
 
+    # ── 6. Radix-4 outer stage — scalar throughput vs N ───────────────────────
+    r4_scalar_names = sorted(
+        {"fft_radix4_outer", "ifft_radix4_outer", "roundtrip_radix4_outer"}
+        & present_groups
+    )
+    r4_scalar_series = _build_series(rows, r4_scalar_names)
+    if r4_scalar_series:
+        paths["radix4_outer"] = _line_chart(
+            r4_scalar_series,
+            "radix4_outer.svg",
+            "Radix-4 Outer Stages — Scalar Throughput vs N",
+            "Signal length  N", "Throughput  (Melem/s)",
+            metric="throughput_mels",
+        )
+
+    # ── 7. Radix-4 outer stage — batch throughput vs N ────────────────────────
+    r4_batch_names = sorted(
+        {"fft_batch_radix4_outer", "ifft_batch_radix4_outer",
+         "roundtrip_batch_radix4_outer"}
+        & present_groups
+    )
+    r4_batch_series = _build_series(rows, r4_batch_names)
+    if r4_batch_series:
+        paths["radix4_batch_outer"] = _line_chart(
+            r4_batch_series,
+            "radix4_batch_outer.svg",
+            "Radix-4 Outer Stages — Batch Throughput vs N  (batch=16)",
+            "Signal length  N", "Throughput  (Melem/s)",
+            metric="throughput_mels",
+        )
+
     return paths
 
 
@@ -518,11 +581,13 @@ def _git(args: list[str]) -> str:
 
 # Chart display metadata: key → (section heading, image alt-text)
 _CHART_META: dict[str, tuple[str, str]] = {
-    "latency":       ("Scalar baselines",                "Latency vs N"),
-    "throughput":    ("Scalar baselines",                "Throughput vs N"),
-    "batch_signal":  ("Batch vs scalar (batch=16)",      "Throughput vs N"),
-    "batch_size":    ("Batch size sweep (N=4 096 fixed)","Throughput vs batch size"),
-    "vs_sequential": ("Batch vs sequential",             "Batch vs sequential throughput"),
+    "latency":            ("Scalar baselines",                "Latency vs N"),
+    "throughput":         ("Scalar baselines",                "Throughput vs N"),
+    "batch_signal":       ("Batch vs scalar (batch=16)",      "Throughput vs N"),
+    "batch_size":         ("Batch size sweep (N=4 096 fixed)","Throughput vs batch size"),
+    "vs_sequential":      ("Batch vs sequential",             "Batch vs sequential throughput"),
+    "radix4_outer":       ("Radix-4 outer stages — scalar",   "Throughput vs N (outer-stage sizes)"),
+    "radix4_batch_outer": ("Radix-4 outer stages — batch",    "Throughput vs N (outer-stage sizes, batch=16)"),
 }
 
 # Ordered sections for the summary table (group names = Criterion dir names).
@@ -533,6 +598,12 @@ _TABLE_SECTIONS: list[tuple[str, frozenset[str]]] = [
     ("Batch IFFT",       frozenset({"ifft_batch_batch_size", "ifft_batch_signal_len",
                                     "ifft_batch_vs_sequential"})),
     ("Batch round-trip", frozenset({"roundtrip_batch", "roundtrip_batch_signal_len"})),
+    ("Radix-4 outer — scalar",
+                         frozenset({"fft_radix4_outer", "ifft_radix4_outer",
+                                    "roundtrip_radix4_outer"})),
+    ("Radix-4 outer — batch",
+                         frozenset({"fft_batch_radix4_outer", "ifft_batch_radix4_outer",
+                                    "roundtrip_batch_radix4_outer"})),
 ]
 
 
@@ -558,9 +629,13 @@ def render(rows: list[dict], raw: str, chart_paths: dict[str, Path] | None) -> s
 
         def _img(key: str) -> str:
             p   = chart_paths[key]
-            rel = p.relative_to(bench_results)
             _, alt = _CHART_META.get(key, ("", key))
-            return f"![{alt}]({rel})"
+            # Both latest.md (bench-results/) and archive files
+            # (bench-results/archive/) reference the same output, so use a
+            # path relative to the archive sub-directory: ../charts/<name>
+            # resolves correctly from bench-results/archive/timestamp.md and
+            # still works for latest.md when viewed via the README link.
+            return f"![{alt}](../charts/{p.name})"
 
         lines.append("## Charts")
         lines.append("")
@@ -578,7 +653,8 @@ def render(rows: list[dict], raw: str, chart_paths: dict[str, Path] | None) -> s
             emitted |= {"latency", "throughput"}
 
         # Remaining charts full-width, each with its own sub-heading.
-        for key in ("batch_signal", "batch_size", "vs_sequential"):
+        for key in ("batch_signal", "batch_size", "vs_sequential",
+                    "radix4_outer", "radix4_batch_outer"):
             if key not in chart_paths:
                 continue
             heading, _ = _CHART_META.get(key, (key, key))

@@ -108,3 +108,62 @@ fn test_fft_linearity() {
         );
     }
 }
+
+// ── Radix-4 outer stage coverage ─────────────────────────────────────────────
+//
+// For N ≤ 1024 all stages fit in the shared-memory inner kernel (no outer
+// stages).  The radix-4 outer kernel first activates at N = 4096 (m = 12,
+// inner_stages = 10 → 2 outer stages → 1 radix-4 dispatch).
+// N = 8192 (m = 13 → 3 outer stages → 1 radix-4 + 1 radix-2) exercises the
+// trailing-radix-2 fallback path.
+
+/// FFT of a length-4096 impulse must be all-ones real, all-zeros imaginary.
+/// Exercises one radix-4 outer stage.
+#[test]
+fn test_fft_impulse_large_even() {
+    let n = 4096usize;
+    let mut input = vec![0.0f32; n];
+    input[0] = 1.0;
+
+    let (real, imag) = fft(&input);
+
+    assert_eq!(real.len(), n);
+    for k in 0..n {
+        assert_approx(real[k], 1.0, &format!("real[{k}]"));
+        assert_approx(imag[k], 0.0, &format!("imag[{k}]"));
+    }
+}
+
+/// FFT of a length-8192 impulse must be all-ones real, all-zeros imaginary.
+/// Exercises one radix-4 outer stage plus the trailing radix-2 stage (m=13,
+/// outer=3 → 1 r4 + 1 r2).
+#[test]
+fn test_fft_impulse_large_odd() {
+    let n = 8192usize;
+    let mut input = vec![0.0f32; n];
+    input[0] = 1.0;
+
+    let (real, imag) = fft(&input);
+
+    assert_eq!(real.len(), n);
+    for k in 0..n {
+        assert_approx(real[k], 1.0, &format!("real[{k}]"));
+        assert_approx(imag[k], 0.0, &format!("imag[{k}]"));
+    }
+}
+
+/// FFT of a DC signal of length 4096: real[0] = N, all others = 0.
+#[test]
+fn test_fft_dc_large() {
+    let n = 4096usize;
+    let input = vec![1.0f32; n];
+
+    let (real, imag) = fft(&input);
+
+    assert_approx(real[0], n as f32, "real[0]");
+    assert_approx(imag[0], 0.0,      "imag[0]");
+    for k in 1..n {
+        assert_approx(real[k], 0.0, &format!("real[{k}]"));
+        assert_approx(imag[k], 0.0, &format!("imag[{k}]"));
+    }
+}

@@ -1,6 +1,11 @@
 use cubecl::prelude::*;
 
-use crate::butterfly::{bit_reverse, butterfly_inner, butterfly_inner_batch, butterfly_stage, butterfly_stage_batch};
+use crate::butterfly::{
+    bit_reverse,
+    butterfly_inner, butterfly_inner_batch,
+    butterfly_stage, butterfly_stage_batch,
+    butterfly_stage_radix4, butterfly_stage_radix4_batch,
+};
 use crate::{TILE_BITS, TILE_SIZE, WORKGROUP_SIZE};
 
 /// Computes the Cooley-Tukey radix-2 DIT IFFT of `(input_real, input_imag)`.
@@ -89,22 +94,42 @@ pub fn ifft<R: Runtime>(
         .expect("IFFT inner (shared-memory) launch failed")
     };
 
-    // ── Outer stages: one launch per stage over global memory ─────────────────
-    let outer_wg = ((n / 2) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-    for s in inner_stages..m {
-        let hs = 1_usize << s;
+    // ── Outer stages: radix-4 pairs, then one radix-2 if the count is odd ────
+    let outer_wg_r4 = ((n / 4) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    let outer_wg_r2 = ((n / 2) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+
+    let mut s = inner_stages;
+    while s + 1 < m {
+        let q = 1_usize << s;
         unsafe {
-            butterfly_stage::launch::<f32, R>(
+            butterfly_stage_radix4::launch::<f32, R>(
                 &client,
-                CubeCount::Static(outer_wg, 1, 1),
+                CubeCount::Static(outer_wg_r4, 1, 1),
                 CubeDim::new_1d(WORKGROUP_SIZE),
                 ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
                 ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
                 n,     // comptime
-                hs,    // comptime — unique kernel per stage
+                q,     // comptime
                 false, // comptime — inverse FFT
             )
-            .expect("IFFT outer butterfly launch failed")
+            .expect("IFFT outer radix-4 butterfly launch failed")
+        };
+        s += 2;
+    }
+    if s < m {
+        let hs = 1_usize << s;
+        unsafe {
+            butterfly_stage::launch::<f32, R>(
+                &client,
+                CubeCount::Static(outer_wg_r2, 1, 1),
+                CubeDim::new_1d(WORKGROUP_SIZE),
+                ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
+                ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
+                n,     // comptime
+                hs,    // comptime
+                false, // comptime — inverse FFT
+            )
+            .expect("IFFT outer radix-2 trailing butterfly launch failed")
         };
     }
 
@@ -234,24 +259,46 @@ pub fn ifft_batch<R: Runtime>(
         .expect("IFFT batch inner (shared-memory) launch failed")
     };
 
-    // ── Outer stages: one flat 1D dispatch per stage ──────────────────────────
-    let total_pairs = batch_size * (n / 2);
-    let outer_wg    = ((total_pairs as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-    for s in inner_stages..m {
+    // ── Outer stages: radix-4 pairs, then one radix-2 if the count is odd ────
+    let total_groups_r4 = batch_size * (n / 4);
+    let total_pairs_r2  = batch_size * (n / 2);
+    let outer_wg_r4 = ((total_groups_r4 as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    let outer_wg_r2 = ((total_pairs_r2  as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+
+    let mut s = inner_stages;
+    while s + 1 < m {
+        let q = 1_usize << s;
+        unsafe {
+            butterfly_stage_radix4_batch::launch::<f32, R>(
+                &client,
+                CubeCount::Static(outer_wg_r4, 1, 1),
+                CubeDim::new_1d(WORKGROUP_SIZE),
+                ArrayArg::from_raw_parts::<f32>(&real_handle, total, 1),
+                ArrayArg::from_raw_parts::<f32>(&imag_handle, total, 1),
+                n,          // comptime
+                q,          // comptime
+                batch_size, // comptime
+                false,      // comptime — inverse FFT
+            )
+            .expect("IFFT batch outer radix-4 butterfly launch failed")
+        };
+        s += 2;
+    }
+    if s < m {
         let hs = 1_usize << s;
         unsafe {
             butterfly_stage_batch::launch::<f32, R>(
                 &client,
-                CubeCount::Static(outer_wg, 1, 1),
+                CubeCount::Static(outer_wg_r2, 1, 1),
                 CubeDim::new_1d(WORKGROUP_SIZE),
                 ArrayArg::from_raw_parts::<f32>(&real_handle, total, 1),
                 ArrayArg::from_raw_parts::<f32>(&imag_handle, total, 1),
-                n,          // comptime — per-signal length
-                hs,         // comptime — half-stride for this stage
-                batch_size, // comptime — number of signals in the batch
+                n,          // comptime
+                hs,         // comptime
+                batch_size, // comptime
                 false,      // comptime — inverse FFT
             )
-            .expect("IFFT batch outer butterfly launch failed")
+            .expect("IFFT batch outer radix-2 trailing butterfly launch failed")
         };
     }
 

@@ -1,4 +1,8 @@
-// Shared Cooley-Tukey radix-2 DIT butterfly kernels and helpers.
+// Shared Cooley-Tukey DIT butterfly kernels and helpers.
+// Radix-2 kernels are used for inner (shared-memory) stages and the optional
+// trailing stage when the number of outer stages is odd.
+// Radix-4 kernels fuse two consecutive radix-2 stages into one dispatch,
+// halving kernel-launch overhead for the outer (global-memory) stages.
 // Used by both fft.rs and ifft.rs.
 use cubecl::prelude::*;
 use std::f32::consts::PI;
@@ -291,6 +295,219 @@ pub fn butterfly_inner_batch<F: Float>(
     real[base + local + half_tile] = s_real[local + half_tile];
     imag[base + local]             = s_imag[local];
     imag[base + local + half_tile] = s_imag[local + half_tile];
+}
+
+// ── Radix-4 outer butterfly stage ────────────────────────────────────────────
+
+/// Single DIT radix-4 butterfly stage over global memory.
+///
+/// Combines two consecutive radix-2 stages (half-strides `q` and `2q`) into a
+/// **single** kernel dispatch.  Each of the N/4 threads handles a group of 4
+/// elements at positions `{p, p+q, p+2q, p+3q}` and computes both stages
+/// entirely in registers before writing results back — eliminating one
+/// kernel-launch round-trip compared to two separate radix-2 dispatches.
+///
+/// ### Stage-1 (half-stride `q`)
+/// ```text
+/// W1 = exp(sign · jπ · k / q)          k = p % q
+///
+/// u0 = in[p]    + W1 · in[p+q]
+/// u1 = in[p]    − W1 · in[p+q]
+/// u2 = in[p+2q] + W1 · in[p+3q]
+/// u3 = in[p+2q] − W1 · in[p+3q]
+/// ```
+///
+/// ### Stage-2 (half-stride `2q`)
+/// ```text
+/// W2a = exp(sign · jπ · k / (2q))
+/// W2b = W2a · exp(sign · jπ/2)   →  cos₂b = neg_sign · sin₂a
+///                                     sin₂b = sign     · cos₂a
+///
+/// y0 = u0 + W2a · u2   →  out[p]
+/// y2 = u0 − W2a · u2   →  out[p+2q]
+/// y1 = u1 + W2b · u3   →  out[p+q]
+/// y3 = u1 − W2b · u3   →  out[p+3q]
+/// ```
+///
+/// ### Launch parameters
+/// ```text
+/// CubeCount = (ceil(N/4 / WORKGROUP_SIZE), 1, 1)
+/// CubeDim   = (WORKGROUP_SIZE, 1, 1)
+/// ```
+///
+/// Each unique `(n, q, forward)` triple compiles to a specialised kernel cached
+/// by CubeCL, consistent with the radix-2 `butterfly_stage` approach.
+#[cube(launch)]
+pub fn butterfly_stage_radix4<F: Float>(
+    real: &mut Array<F>,
+    imag: &mut Array<F>,
+    #[comptime] n: usize,
+    #[comptime] q: usize,       // quarter-stride = half-stride of the lower stage
+    #[comptime] forward: bool,
+) {
+    let tid = ABSOLUTE_POS;
+    if tid < n / 4 {
+        let k     = tid % q;
+        let group = tid / q;
+        let p     = group * (q * 4) + k;
+
+        // ── Load 4 elements ───────────────────────────────────────────────────
+        let ar = real[p];
+        let ai = imag[p];
+        let br = real[p + q];
+        let bi = imag[p + q];
+        let cr = real[p + q * 2];
+        let ci = imag[p + q * 2];
+        let dr = real[p + q * 3];
+        let di = imag[p + q * 3];
+
+        // ── Stage-1 twiddle: W1 = exp(sign · jπ · k / q) ────────────────────
+        let sign    = if forward { F::new(-1.0) } else { F::new(1.0) };
+        let angle1  = sign * F::new(PI) * F::cast_from(k) / F::cast_from(q);
+        let cos1    = F::cos(angle1);
+        let sin1    = F::sin(angle1);
+
+        let w1b_r = cos1 * br - sin1 * bi;
+        let w1b_i = sin1 * br + cos1 * bi;
+        let w1d_r = cos1 * dr - sin1 * di;
+        let w1d_i = sin1 * dr + cos1 * di;
+
+        // ── Stage-1 outputs (held in registers, no global write) ──────────────
+        let u0r = ar + w1b_r;   let u0i = ai + w1b_i;
+        let u1r = ar - w1b_r;   let u1i = ai - w1b_i;
+        let u2r = cr + w1d_r;   let u2i = ci + w1d_i;
+        let u3r = cr - w1d_r;   let u3i = ci - w1d_i;
+
+        // ── Stage-2 twiddles ──────────────────────────────────────────────────
+        // W2a = exp(sign · jπ · k / (2q))
+        let angle2a = sign * F::new(PI) * F::cast_from(k) / F::cast_from(q * 2);
+        let cos2a   = F::cos(angle2a);
+        let sin2a   = F::sin(angle2a);
+
+        // W2b = W2a · exp(sign · jπ/2), derived without a second trig call:
+        //   forward  (sign = −1): angle2b = angle2a − π/2
+        //                          cos2b =  sin2a,  sin2b = −cos2a
+        //   inverse  (sign = +1): angle2b = angle2a + π/2
+        //                          cos2b = −sin2a,  sin2b =  cos2a
+        //   In both cases: cos2b = neg_sign · sin2a,  sin2b = sign · cos2a
+        let neg_sign = if forward { F::new(1.0) } else { F::new(-1.0) };
+        let cos2b    = neg_sign * sin2a;
+        let sin2b    = sign * cos2a;
+
+        // W2a · u2
+        let w2a_u2r = cos2a * u2r - sin2a * u2i;
+        let w2a_u2i = sin2a * u2r + cos2a * u2i;
+        // W2b · u3
+        let w2b_u3r = cos2b * u3r - sin2b * u3i;
+        let w2b_u3i = sin2b * u3r + cos2b * u3i;
+
+        // ── Stage-2 outputs → write back to global memory ─────────────────────
+        real[p]         = u0r + w2a_u2r;
+        imag[p]         = u0i + w2a_u2i;
+        real[p + q * 2] = u0r - w2a_u2r;
+        imag[p + q * 2] = u0i - w2a_u2i;
+        real[p + q]     = u1r + w2b_u3r;
+        imag[p + q]     = u1i + w2b_u3i;
+        real[p + q * 3] = u1r - w2b_u3r;
+        imag[p + q * 3] = u1i - w2b_u3i;
+    }
+}
+
+// ── Batched radix-4 outer butterfly stage ─────────────────────────────────────
+
+/// Batched DIT radix-4 butterfly stage over global memory.
+///
+/// Processes `batch_size` independent signals of length `n` packed end-to-end
+/// in `real` / `imag` (signal `b` starts at byte offset `b * n`).
+///
+/// Uses a flat 1-D dispatch — `ABSOLUTE_POS` encodes both the signal index and
+/// the butterfly-group position within it:
+///
+/// ```text
+/// signal = tid / (n / 4)
+/// pos    = tid % (n / 4)
+/// ```
+///
+/// `pos` is then handled identically to the scalar `butterfly_stage_radix4`
+/// (the same two-stage radix-4 butterfly in registers).
+///
+/// ### Launch parameters
+/// ```text
+/// CubeCount = (ceil(batch_size × N/4 / WORKGROUP_SIZE), 1, 1)
+/// CubeDim   = (WORKGROUP_SIZE, 1, 1)
+/// ```
+///
+/// `batch_size` is comptime so the guard `tid < batch_size × (n/4)` is a
+/// compile-time constant with no runtime branch cost.
+#[cube(launch)]
+pub fn butterfly_stage_radix4_batch<F: Float>(
+    real: &mut Array<F>,
+    imag: &mut Array<F>,
+    #[comptime] n: usize,
+    #[comptime] q: usize,
+    #[comptime] batch_size: usize,
+    #[comptime] forward: bool,
+) {
+    let tid = ABSOLUTE_POS;
+    if tid < batch_size * (n / 4) {
+        let signal = tid / (n / 4);
+        let pos    = tid % (n / 4);
+        let offset = signal * n;
+
+        let k     = pos % q;
+        let group = pos / q;
+        let p     = group * (q * 4) + k;
+
+        // ── Load 4 elements ───────────────────────────────────────────────────
+        let ar = real[offset + p];
+        let ai = imag[offset + p];
+        let br = real[offset + p + q];
+        let bi = imag[offset + p + q];
+        let cr = real[offset + p + q * 2];
+        let ci = imag[offset + p + q * 2];
+        let dr = real[offset + p + q * 3];
+        let di = imag[offset + p + q * 3];
+
+        // ── Stage-1 twiddle ───────────────────────────────────────────────────
+        let sign    = if forward { F::new(-1.0) } else { F::new(1.0) };
+        let angle1  = sign * F::new(PI) * F::cast_from(k) / F::cast_from(q);
+        let cos1    = F::cos(angle1);
+        let sin1    = F::sin(angle1);
+
+        let w1b_r = cos1 * br - sin1 * bi;
+        let w1b_i = sin1 * br + cos1 * bi;
+        let w1d_r = cos1 * dr - sin1 * di;
+        let w1d_i = sin1 * dr + cos1 * di;
+
+        let u0r = ar + w1b_r;   let u0i = ai + w1b_i;
+        let u1r = ar - w1b_r;   let u1i = ai - w1b_i;
+        let u2r = cr + w1d_r;   let u2i = ci + w1d_i;
+        let u3r = cr - w1d_r;   let u3i = ci - w1d_i;
+
+        // ── Stage-2 twiddles ──────────────────────────────────────────────────
+        let angle2a = sign * F::new(PI) * F::cast_from(k) / F::cast_from(q * 2);
+        let cos2a   = F::cos(angle2a);
+        let sin2a   = F::sin(angle2a);
+
+        let neg_sign = if forward { F::new(1.0) } else { F::new(-1.0) };
+        let cos2b    = neg_sign * sin2a;
+        let sin2b    = sign * cos2a;
+
+        let w2a_u2r = cos2a * u2r - sin2a * u2i;
+        let w2a_u2i = sin2a * u2r + cos2a * u2i;
+        let w2b_u3r = cos2b * u3r - sin2b * u3i;
+        let w2b_u3i = sin2b * u3r + cos2b * u3i;
+
+        // ── Write back ────────────────────────────────────────────────────────
+        real[offset + p]         = u0r + w2a_u2r;
+        imag[offset + p]         = u0i + w2a_u2i;
+        real[offset + p + q * 2] = u0r - w2a_u2r;
+        imag[offset + p + q * 2] = u0i - w2a_u2i;
+        real[offset + p + q]     = u1r + w2b_u3r;
+        imag[offset + p + q]     = u1i + w2b_u3i;
+        real[offset + p + q * 3] = u1r - w2b_u3r;
+        imag[offset + p + q * 3] = u1i - w2b_u3i;
+    }
 }
 
 // ── CPU helper ────────────────────────────────────────────────────────────────

@@ -1,6 +1,11 @@
 use cubecl::prelude::*;
 
-use crate::butterfly::{bit_reverse, butterfly_inner, butterfly_inner_batch, butterfly_stage, butterfly_stage_batch};
+use crate::butterfly::{
+    bit_reverse,
+    butterfly_inner, butterfly_inner_batch,
+    butterfly_stage, butterfly_stage_batch,
+    butterfly_stage_radix4, butterfly_stage_radix4_batch,
+};
 use crate::{TILE_BITS, TILE_SIZE, WORKGROUP_SIZE};
 
 /// Computes the Cooley-Tukey radix-2 DIT FFT of `input`.
@@ -13,14 +18,15 @@ use crate::{TILE_BITS, TILE_SIZE, WORKGROUP_SIZE};
 /// All stages where `half_stride < TILE_SIZE / 2` are fused into a **single**
 /// `butterfly_inner` dispatch using workgroup shared memory — eliminating the
 /// per-stage kernel-launch overhead that dominates small-N performance.
-/// The remaining outer stages (one per stage) use `butterfly_stage` over global
-/// memory.
+/// The remaining outer stages use `butterfly_stage_radix4` (two radix-2 stages
+/// per dispatch) where possible, falling back to `butterfly_stage` for a single
+/// trailing stage when the outer-stage count is odd.
 ///
-/// | N        | Launches |
-/// |----------|----------|
-/// | ≤ 1 024  | 1        |
-/// | 4 096    | 3        |
-/// | 65 536   | 7        |
+/// | N        | Inner | Outer        | Total |
+/// |----------|------:|-------------:|------:|
+/// | ≤ 1 024  | 1     | 0            | **1** |
+/// | 4 096    | 1     | 1 (r4)       | **2** |
+/// | 65 536   | 1     | 3 (r4)       | **4** |
 ///
 /// # Example
 ///
@@ -78,22 +84,45 @@ pub fn fft<R: Runtime>(device: &R::Device, input: &[f32]) -> (Vec<f32>, Vec<f32>
         .expect("FFT inner (shared-memory) launch failed")
     };
 
-    // ── Outer stages: one launch per stage over global memory ─────────────────
-    let outer_wg = ((n / 2) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-    for s in inner_stages..m {
-        let hs = 1_usize << s;
+    // ── Outer stages: radix-4 pairs, then one radix-2 if the count is odd ────
+    // Two consecutive radix-2 stages (strides q and 2q) are fused into a single
+    // radix-4 dispatch, halving the number of kernel launches for large N.
+    let outer_wg_r4 = ((n / 4) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    let outer_wg_r2 = ((n / 2) as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+
+    let mut s = inner_stages;
+    while s + 1 < m {
+        let q = 1_usize << s;   // quarter-stride = half-stride of the lower stage
         unsafe {
-            butterfly_stage::launch::<f32, R>(
+            butterfly_stage_radix4::launch::<f32, R>(
                 &client,
-                CubeCount::Static(outer_wg, 1, 1),
+                CubeCount::Static(outer_wg_r4, 1, 1),
                 CubeDim::new_1d(WORKGROUP_SIZE),
                 ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
                 ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
                 n,    // comptime
-                hs,   // comptime — unique kernel per stage
+                q,    // comptime — specialises kernel for this stage pair
                 true, // comptime — forward FFT
             )
-            .expect("FFT outer butterfly launch failed")
+            .expect("FFT outer radix-4 butterfly launch failed")
+        };
+        s += 2;
+    }
+    // Trailing radix-2 stage when (m − inner_stages) is odd.
+    if s < m {
+        let hs = 1_usize << s;
+        unsafe {
+            butterfly_stage::launch::<f32, R>(
+                &client,
+                CubeCount::Static(outer_wg_r2, 1, 1),
+                CubeDim::new_1d(WORKGROUP_SIZE),
+                ArrayArg::from_raw_parts::<f32>(&real_handle, n, 1),
+                ArrayArg::from_raw_parts::<f32>(&imag_handle, n, 1),
+                n,    // comptime
+                hs,   // comptime
+                true, // comptime — forward FFT
+            )
+            .expect("FFT outer radix-2 trailing butterfly launch failed")
         };
     }
 
@@ -198,26 +227,46 @@ pub fn fft_batch<R: Runtime>(device: &R::Device, signals: &[Vec<f32>]) -> Vec<(V
         .expect("FFT batch inner (shared-memory) launch failed")
     };
 
-    // ── Outer stages: one flat 1D dispatch per stage ──────────────────────────
-    // Thread tid → signal tid/(n/2), pair tid%(n/2).
-    // Total valid threads = batch_size * n/2.
-    let total_pairs = batch_size * (n / 2);
-    let outer_wg    = ((total_pairs as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-    for s in inner_stages..m {
+    // ── Outer stages: radix-4 pairs, then one radix-2 if the count is odd ────
+    let total_groups_r4 = batch_size * (n / 4);
+    let total_pairs_r2  = batch_size * (n / 2);
+    let outer_wg_r4 = ((total_groups_r4 as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+    let outer_wg_r2 = ((total_pairs_r2  as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+
+    let mut s = inner_stages;
+    while s + 1 < m {
+        let q = 1_usize << s;
+        unsafe {
+            butterfly_stage_radix4_batch::launch::<f32, R>(
+                &client,
+                CubeCount::Static(outer_wg_r4, 1, 1),
+                CubeDim::new_1d(WORKGROUP_SIZE),
+                ArrayArg::from_raw_parts::<f32>(&real_handle, total, 1),
+                ArrayArg::from_raw_parts::<f32>(&imag_handle, total, 1),
+                n,          // comptime
+                q,          // comptime
+                batch_size, // comptime
+                true,       // comptime — forward FFT
+            )
+            .expect("FFT batch outer radix-4 butterfly launch failed")
+        };
+        s += 2;
+    }
+    if s < m {
         let hs = 1_usize << s;
         unsafe {
             butterfly_stage_batch::launch::<f32, R>(
                 &client,
-                CubeCount::Static(outer_wg, 1, 1),
+                CubeCount::Static(outer_wg_r2, 1, 1),
                 CubeDim::new_1d(WORKGROUP_SIZE),
                 ArrayArg::from_raw_parts::<f32>(&real_handle, total, 1),
                 ArrayArg::from_raw_parts::<f32>(&imag_handle, total, 1),
-                n,          // comptime — per-signal length
-                hs,         // comptime — half-stride for this stage
-                batch_size, // comptime — number of signals in the batch
+                n,          // comptime
+                hs,         // comptime
+                batch_size, // comptime
                 true,       // comptime — forward FFT
             )
-            .expect("FFT batch outer butterfly launch failed")
+            .expect("FFT batch outer radix-2 trailing butterfly launch failed")
         };
     }
 
