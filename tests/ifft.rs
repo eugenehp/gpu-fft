@@ -13,7 +13,7 @@ fn test_ifft_dc_spectrum() {
     real_in[0] = n as f32;
     let imag_in = vec![0.0f32; n];
 
-    let output = ifft(real_in, imag_in);
+    let output = ifft(&real_in, &imag_in);
 
     // output[0..n]  = real part of reconstructed signal
     // output[n..2n] = imaginary part (should be ~0 for a real spectrum)
@@ -30,7 +30,7 @@ fn test_ifft_flat_spectrum() {
     let real_in = vec![1.0f32; n];
     let imag_in = vec![0.0f32; n];
 
-    let output = ifft(real_in, imag_in);
+    let output = ifft(&real_in, &imag_in);
 
     let mut expected_real = vec![0.0f32; n];
     expected_real[0] = 1.0;
@@ -46,12 +46,12 @@ fn test_ifft_linearity() {
     let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
     let n = input.len();
 
-    let (real, imag) = gpu_fft::fft(input);
-    let output_base = ifft(real.clone(), imag.clone());
+    let (real, imag) = gpu_fft::fft(&input);
+    let output_base = ifft(&real, &imag);
 
     let real_scaled: Vec<f32> = real.iter().map(|&x| x * scale).collect();
     let imag_scaled: Vec<f32> = imag.iter().map(|&x| x * scale).collect();
-    let output_scaled = ifft(real_scaled, imag_scaled);
+    let output_scaled = ifft(&real_scaled, &imag_scaled);
 
     for i in 0..n {
         common::assert_approx(

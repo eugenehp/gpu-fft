@@ -11,8 +11,8 @@ fn test_roundtrip_arbitrary_signal() {
     let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
     let n = input.len();
 
-    let (real, imag) = fft(input.clone());
-    let output = ifft(real, imag);
+    let (real, imag) = fft(&input);
+    let output = ifft(&real, &imag);
 
     assert_slice_approx(&output[..n], &input, "real (round-trip)");
     assert_slice_approx(&output[n..], &[0.0f32; 8], "imag (should be ~0)");
@@ -24,8 +24,8 @@ fn test_roundtrip_with_negatives() {
     let input = vec![-3.0f32, 1.5, 0.0, -2.0, 4.0, -1.0, 0.5, 2.5];
     let n = input.len();
 
-    let (real, imag) = fft(input.clone());
-    let output = ifft(real, imag);
+    let (real, imag) = fft(&input);
+    let output = ifft(&real, &imag);
 
     assert_slice_approx(&output[..n], &input, "real (round-trip with negatives)");
     assert_slice_approx(&output[n..], &[0.0f32; 8], "imag (should be ~0)");
@@ -39,8 +39,8 @@ fn test_roundtrip_sine_wave() {
         .map(|i| (2.0 * PI * i as f32 / n as f32).sin())
         .collect();
 
-    let (real, imag) = fft(input.clone());
-    let output = ifft(real, imag);
+    let (real, imag) = fft(&input);
+    let output = ifft(&real, &imag);
 
     assert_slice_approx(&output[..n], &input, "real (sine round-trip)");
     assert_slice_approx(&output[n..], &[0.0f32; 8], "imag (should be ~0)");

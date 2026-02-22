@@ -48,34 +48,36 @@ The program will generate a sine wave with a specified frequency and sample rate
 ### Example Output
 
 ```
-====================
-    Input with frequency - 10 Hz
-====================
-1000000 [0.0, 0.06279052, 0.12533323, 0.18738133, 0.2486899, 0.309017, 0.36812457, 0.4257793, 0.4817537, 0.5358268]..
-====================
-    FFT 3.7933425s
-====================
-Frequency: 10.00 Hz, Power: 249999.38
-Frequency: 958.99 Hz, Power: 122.58
-Frequency: 990.00 Hz, Power: 247388.88
-====================
-    IFFT 4.030771s
-====================
+Input
+  samples    : 1000
+  sample rate: 200 Hz
+  frequency  : 15 Hz
+  first 5    : [0.0000, 0.4540, 0.8090, 0.9877, 0.9511]
+
+FFT  completed in 54.48ms
+Dominant frequencies (0 … 100 Hz):
+     15.00 Hz  power       250.00
+
+IFFT completed in 3.32ms
+Round-trip max error : 4.19e-4  (limit 5·N·ε = 5.96e-4)  ✓
 ```
 
 ## Benchmarks
 
-```shell
-cargo bench
-```
-
-returns
+Run all benchmarks and save a timestamped Markdown report to `bench-results/`:
 
 ```shell
-fft     time:   [728.14 µs 748.98 µs 769.46 µs]
-        change: [-6.5555% -3.9636% -1.1877%] (p = 0.01 < 0.05)
-        Performance has improved.
+./scripts/bench.sh
 ```
+
+Or run a single group / variant directly:
+
+```shell
+cargo bench --bench fft_bench -- fft/1024
+```
+
+Results are saved to `bench-results/latest.md` and archived under
+`bench-results/archive/`. See the latest results there.
 
 ## License
 

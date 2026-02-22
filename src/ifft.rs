@@ -103,16 +103,17 @@ fn ifft_kernel<F: Float>(
 /// This function uses unsafe operations to interact with the underlying runtime and device.
 /// The caller must ensure that the input data is valid and that the device is properly set up
 /// for computation.
+#[must_use]
 pub fn ifft<R: Runtime>(
     device: &R::Device,
-    input_real: Vec<f32>,
-    input_imag: Vec<f32>,
+    input_real: &[f32],
+    input_imag: &[f32],
 ) -> Vec<f32> {
     let client = R::client(device);
     let n = input_real.len();
 
-    let real_handle = client.create_from_slice(f32::as_bytes(&input_real));
-    let imag_handle = client.create_from_slice(f32::as_bytes(&input_imag));
+    let real_handle = client.create_from_slice(f32::as_bytes(input_real));
+    let imag_handle = client.create_from_slice(f32::as_bytes(input_imag));
     let output_handle = client.empty(n * 2 * core::mem::size_of::<f32>()); // Assuming output is interleaved
 
     let num_workgroups = (n as u32 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;

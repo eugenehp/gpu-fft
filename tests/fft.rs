@@ -14,7 +14,7 @@ fn test_fft_impulse() {
     let mut input = vec![0.0f32; n];
     input[0] = 1.0;
 
-    let (real, imag) = fft(input);
+    let (real, imag) = fft(&input);
 
     assert_slice_approx(&real, &[1.0; 8], "real");
     assert_slice_approx(&imag, &[0.0; 8], "imag");
@@ -28,7 +28,7 @@ fn test_fft_dc_signal() {
     let n = 8;
     let input = vec![1.0f32; n];
 
-    let (real, imag) = fft(input);
+    let (real, imag) = fft(&input);
 
     assert_approx(real[0], n as f32, "real[0]");
     assert_approx(imag[0], 0.0, "imag[0]");
@@ -54,7 +54,7 @@ fn test_fft_single_frequency_sine() {
         .map(|i| (2.0 * PI * i as f32 / n as f32).sin())
         .collect();
 
-    let (real, imag) = fft(input);
+    let (real, imag) = fft(&input);
 
     // DC bin
     assert_approx(real[0], 0.0, "real[0] (DC)");
@@ -79,7 +79,7 @@ fn test_fft_single_frequency_sine() {
 #[test]
 fn test_fft_zero_input() {
     let n = 8;
-    let (real, imag) = fft(vec![0.0f32; n]);
+    let (real, imag) = fft(&vec![0.0f32; n]);
     assert_slice_approx(&real, &[0.0; 8], "real");
     assert_slice_approx(&imag, &[0.0; 8], "imag");
 }
@@ -91,8 +91,8 @@ fn test_fft_linearity() {
     let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
     let scaled_input: Vec<f32> = input.iter().map(|&x| x * scale).collect();
 
-    let (real_base, imag_base) = fft(input);
-    let (real_scaled, imag_scaled) = fft(scaled_input);
+    let (real_base, imag_base) = fft(&input);
+    let (real_scaled, imag_scaled) = fft(&scaled_input);
 
     let n = real_base.len();
     for i in 0..n {

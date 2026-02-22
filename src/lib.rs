@@ -1,7 +1,9 @@
 pub mod fft;
 pub mod ifft;
 pub mod psd;
-pub mod twiddles;
+// Work-in-progress precomputed-twiddle path; not yet wired into the public API.
+#[allow(dead_code)]
+pub(crate) mod twiddles;
 pub mod utils;
 
 // The general advice for WebGPU is to choose a workgroup size of 64
@@ -35,9 +37,10 @@ type Runtime = cubecl::cuda::CudaRuntime;
 /// ```no_run
 /// use gpu_fft::fft;
 /// let input = vec![0.0f32, 1.0, 0.0, 0.0];
-/// let (real, imag) = fft(input);
+/// let (real, imag) = fft(&input);
 /// ```
-pub fn fft(input: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+#[must_use]
+pub fn fft(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
     fft::fft::<Runtime>(&Default::default(), input)
 }
 
@@ -61,9 +64,10 @@ pub fn fft(input: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
 /// use gpu_fft::ifft;
 /// let real = vec![0.0f32, 1.0, 0.0, 0.0];
 /// let imag = vec![0.0f32, 0.0, 0.0, 0.0];
-/// let time_domain = ifft(real, imag);
+/// let time_domain = ifft(&real, &imag);
 /// ```
-pub fn ifft(input_real: Vec<f32>, input_imag: Vec<f32>) -> Vec<f32> {
+#[must_use]
+pub fn ifft(input_real: &[f32], input_imag: &[f32]) -> Vec<f32> {
     ifft::ifft::<Runtime>(&Default::default(), input_real, input_imag)
 }
 

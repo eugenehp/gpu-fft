@@ -1,5 +1,4 @@
 use std::f32::consts::PI;
-use std::hint::black_box;
 use std::time::Duration;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -37,7 +36,7 @@ fn bench_fft(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(n), &input, |b, input| {
             b.iter_batched(
                 || input.clone(),
-                |inp| gpu_fft::fft::fft::<Runtime>(&device, black_box(inp)),
+                |inp| gpu_fft::fft::fft::<Runtime>(&device, &inp),
                 BatchSize::SmallInput,
             );
         });
@@ -60,7 +59,7 @@ fn bench_ifft(c: &mut Criterion) {
 
     for &n in SIZES {
         // Pre-compute the spectrum — only IFFT is timed below.
-        let (real, imag) = gpu_fft::fft::fft::<Runtime>(&device, sine_wave(n));
+        let (real, imag) = gpu_fft::fft::fft::<Runtime>(&device, &sine_wave(n));
         group.throughput(Throughput::Elements(n as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(n),
@@ -68,9 +67,7 @@ fn bench_ifft(c: &mut Criterion) {
             |b, (real, imag)| {
                 b.iter_batched(
                     || (real.clone(), imag.clone()),
-                    |(re, im)| {
-                        gpu_fft::ifft::ifft::<Runtime>(&device, black_box(re), black_box(im))
-                    },
+                    |(re, im)| gpu_fft::ifft::ifft::<Runtime>(&device, &re, &im),
                     BatchSize::SmallInput,
                 );
             },
@@ -99,8 +96,8 @@ fn bench_roundtrip(c: &mut Criterion) {
             b.iter_batched(
                 || input.clone(),
                 |inp| {
-                    let (re, im) = gpu_fft::fft::fft::<Runtime>(&device, black_box(inp));
-                    gpu_fft::ifft::ifft::<Runtime>(&device, re, im)
+                    let (re, im) = gpu_fft::fft::fft::<Runtime>(&device, &inp);
+                    gpu_fft::ifft::ifft::<Runtime>(&device, &re, &im)
                 },
                 BatchSize::SmallInput,
             );
