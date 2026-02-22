@@ -11,6 +11,10 @@ readme = "README.md"
 homepage = "https://github.com/eugenehp/gpu-fft"
 documentation = "https://docs.rs/gpu-fft" 
 
+exclude = [
+    "bench-results/**/*"
+]
+
 [dependencies]
 cubecl = { version = "0.9.0" }
 

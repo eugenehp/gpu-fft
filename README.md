@@ -12,6 +12,7 @@ A Rust library for GPU-accelerated FFT and IFFT built on [CubeCL](https://github
 - [Algorithm](#algorithm)
 - [Citation](#citation)
 - [License](#license)
+- [Changelog](CHANGELOG.md)
 
 ## Features
 
