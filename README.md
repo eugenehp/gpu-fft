@@ -445,11 +445,11 @@ If you use gpu-fft in academic work, please cite it as:
 
 **Plain text (APA)**
 > Hauptmann, E. (2025). *gpu-fft: GPU-accelerated FFT/IFFT in Rust* (v1.0.0).
-> https://github.com/name/gpu-fft
+> https://github.com/eugenehp/gpu-fft
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](/LICENSE) file for details.
+This project is licensed under the [MIT License](/LICENSE).
 
 ## Copyright
 
