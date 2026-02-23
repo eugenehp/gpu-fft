@@ -129,9 +129,3 @@ Initial public release.
 - Scalar benchmark groups `fft`, `ifft`, `roundtrip` over
   N ∈ {256, 1 024, 4 096, 16 384, 65 536}
 - `latency.svg` and `throughput.svg` charts
-
----
-
-[Unreleased]: https://github.com/name/gpu-fft/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/name/gpu-fft/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/name/gpu-fft/releases/tag/v1.0.0
