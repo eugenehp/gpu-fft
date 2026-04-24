@@ -9,6 +9,10 @@ use common::{assert_approx, assert_slice_approx};
 
 /// Each output of `fft_batch` must exactly match the result of calling `fft` on
 /// the same signal individually.
+///
+/// `fft_batch` zero-pads all signals to `max_len.next_power_of_two()`, so we
+/// pad each individual signal to the same length before calling `fft` to get
+/// comparable outputs.
 #[test]
 fn test_fft_batch_matches_single() {
     let signals: Vec<Vec<f32>> = vec![
@@ -21,8 +25,14 @@ fn test_fft_batch_matches_single() {
     let batch_results = fft_batch(&signals);
     assert_eq!(batch_results.len(), signals.len());
 
+    // fft_batch pads to the longest signal's next power of two.
+    let batch_n = signals.iter().map(|s| s.len()).max().unwrap().next_power_of_two();
+
     for (b, signal) in signals.iter().enumerate() {
-        let (exp_real, exp_imag) = fft(signal);
+        // Pad individual signal to the same length as the batch.
+        let mut padded = signal.clone();
+        padded.resize(batch_n, 0.0);
+        let (exp_real, exp_imag) = fft(&padded);
         let (got_real, got_imag) = &batch_results[b];
 
         assert_slice_approx(got_real, &exp_real, &format!("batch[{b}] real"));

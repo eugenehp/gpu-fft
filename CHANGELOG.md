@@ -7,6 +7,41 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-04-24
+
+### Added
+
+- **MLX backend** (`--features mlx`) — wraps Apple's MLX framework FFT via
+  the MLX-C API; 3.7x faster than WGPU at N=65 536 on Apple Silicon
+- **Runtime backend selection** — `Backend` enum with `fft_with()` /
+  `ifft_with()` for choosing WGPU, CUDA, or MLX at runtime
+- `available_backends()` — query which backends were compiled in
+- `fft_mlx()` / `ifft_mlx()` convenience wrappers
+- `build.rs` auto-detects MLX-C install in `$HOME/mlx-c-install`,
+  `/opt/homebrew`, `/usr/local`; set `MLX_C_PREFIX` to override
+- Cross-backend numeric parity tests (`tests/parity.rs`)
+- `benches/compare_bench.rs` — WGPU vs MLX comparison benchmark
+- `examples/backends.rs` — runtime backend selection example
+
+### Removed
+
+- Metal SIMD backend (`--features metal-simd`) — superseded by MLX
+- MPS backend (`--features mps`) — superseded by MLX
+
+### Performance
+
+Measured 2026-04-24, Apple M4 Mini, forward FFT.
+
+| N | WGPU | MLX | Speedup |
+|--:|---:|---:|---:|
+| 256 | 263 µs | **118 µs** | 2.2x |
+| 1 024 | 276 µs | **120 µs** | 2.3x |
+| 4 096 | 326 µs | **123 µs** | 2.7x |
+| 16 384 | 408 µs | **150 µs** | 2.7x |
+| 65 536 | 773 µs | **209 µs** | 3.7x |
+
+---
+
 ## [1.1.0] — 2026-02-22
 
 ### Added

@@ -9,6 +9,94 @@ pub(crate) mod butterfly;
 #[allow(dead_code)]
 pub(crate) mod twiddles;
 
+// ── Optional Apple Silicon backend ───────────────────────────────────────────
+
+/// MLX backend wrapping Apple's MLX framework FFT.
+///
+/// Calls MLX's GPU FFT implementation via the MLX-C API.
+#[cfg(all(target_os = "macos", feature = "mlx"))]
+pub mod mlx;
+
+// ── Runtime backend selection ────────────────────────────────────────────────
+
+/// Available FFT backends, selected at runtime.
+///
+/// Only variants whose corresponding feature flag is enabled will be present.
+///
+/// # Example
+///
+/// ```no_run
+/// use gpu_fft::{Backend, fft_with};
+/// let (real, imag) = fft_with(&[1.0, 0.0, 0.0, 0.0], Backend::Wgpu);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// CubeCL → WGSL → Metal/Vulkan/DX12 (cross-platform).
+    #[cfg(feature = "wgpu")]
+    Wgpu,
+    /// CubeCL → CUDA (NVIDIA only).
+    #[cfg(feature = "cuda")]
+    Cuda,
+    /// Apple MLX FFT (Apple Silicon).
+    #[cfg(all(target_os = "macos", feature = "mlx"))]
+    Mlx,
+}
+
+/// Returns a list of all backends that were compiled into this build.
+///
+/// Useful for CLI tools, logging, or dynamically selecting a backend.
+///
+/// # Example
+///
+/// ```no_run
+/// for b in gpu_fft::available_backends() {
+///     println!("{b:?}");
+/// }
+/// ```
+#[must_use]
+pub fn available_backends() -> Vec<Backend> {
+    vec![
+        #[cfg(feature = "wgpu")]
+        Backend::Wgpu,
+        #[cfg(feature = "cuda")]
+        Backend::Cuda,
+        #[cfg(all(target_os = "macos", feature = "mlx"))]
+        Backend::Mlx,
+    ]
+}
+
+/// Forward FFT using the specified backend.
+///
+/// Same semantics as [`fft`]: zero-pads to next power of two, returns
+/// `(real, imag)` of length `n.next_power_of_two()`.
+#[must_use]
+pub fn fft_with(input: &[f32], backend: Backend) -> (Vec<f32>, Vec<f32>) {
+    match backend {
+        #[cfg(feature = "wgpu")]
+        Backend::Wgpu => fft::fft::<cubecl::wgpu::WgpuRuntime>(&Default::default(), input),
+        #[cfg(feature = "cuda")]
+        Backend::Cuda => fft::fft::<cubecl::cuda::CudaRuntime>(&Default::default(), input),
+        #[cfg(all(target_os = "macos", feature = "mlx"))]
+        Backend::Mlx => mlx::fft::fft(input),
+    }
+}
+
+/// Inverse FFT using the specified backend.
+///
+/// Same semantics as [`ifft`]: returns `Vec<f32>` of length `2*n` where
+/// `[0..n]` is real and `[n..2n]` is imaginary.
+#[must_use]
+pub fn ifft_with(input_real: &[f32], input_imag: &[f32], backend: Backend) -> Vec<f32> {
+    match backend {
+        #[cfg(feature = "wgpu")]
+        Backend::Wgpu => ifft::ifft::<cubecl::wgpu::WgpuRuntime>(&Default::default(), input_real, input_imag),
+        #[cfg(feature = "cuda")]
+        Backend::Cuda => ifft::ifft::<cubecl::cuda::CudaRuntime>(&Default::default(), input_real, input_imag),
+        #[cfg(all(target_os = "macos", feature = "mlx"))]
+        Backend::Mlx => mlx::fft::ifft(input_real, input_imag),
+    }
+}
+
 // 1024 threads per workgroup saturates most desktop GPUs and is the maximum
 // allowed by Metal / Vulkan / WebGPU on typical hardware.
 pub(crate) const WORKGROUP_SIZE: u32 = 1024;
@@ -127,3 +215,18 @@ pub fn ifft_batch(signals: &[(Vec<f32>, Vec<f32>)]) -> Vec<Vec<f32>> {
     ifft::ifft_batch::<Runtime>(&Default::default(), signals)
 }
 
+// ── MLX convenience wrappers ─────────────────────────────────────────────────
+
+/// Forward FFT via Apple's MLX framework.
+#[cfg(all(target_os = "macos", feature = "mlx"))]
+#[must_use]
+pub fn fft_mlx(input: &[f32]) -> (Vec<f32>, Vec<f32>) {
+    mlx::fft::fft(input)
+}
+
+/// Inverse FFT via Apple's MLX framework.
+#[cfg(all(target_os = "macos", feature = "mlx"))]
+#[must_use]
+pub fn ifft_mlx(input_real: &[f32], input_imag: &[f32]) -> Vec<f32> {
+    mlx::fft::ifft(input_real, input_imag)
+}

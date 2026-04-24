@@ -24,6 +24,8 @@ A Rust library for GPU-accelerated FFT and IFFT built on [CubeCL](https://github
 - **Power Spectral Density** — one-sided PSD with correct 1/N normalisation
 - **Dominant frequency detection** — local-peak search above a threshold
 - **wgpu and CUDA backends** via CubeCL feature flags
+- **MLX backend** — Apple's MLX framework FFT via MLX-C FFI (Apple Silicon)
+- **Runtime backend selection** — pick WGPU, CUDA, or MLX at runtime via `Backend` enum
 
 ## Roadmap
 
@@ -44,6 +46,16 @@ A Rust library for GPU-accelerated FFT and IFFT built on [CubeCL](https://github
 ```bash
 cargo add gpu_fft -F wgpu
 ```
+
+### Optional MLX backend (Apple Silicon)
+
+```bash
+cargo add gpu_fft -F mlx
+```
+
+Requires the [MLX-C library](https://github.com/ml-explore/mlx-c) installed.
+The build script auto-detects it in `$HOME/mlx-c-install`, `/opt/homebrew`, or
+`/usr/local`. Set `MLX_C_PREFIX` to override.
 
 ## Usage
 
@@ -118,6 +130,30 @@ let recovered: Vec<Vec<f32>> = ifft_batch(&spectra);
 > the batch.
 
 ## Benchmarks
+
+### Backend comparison (Apple M4 Mini)
+
+![Backend comparison heatmap](bench-results/charts/backend_comparison.svg)
+
+Forward FFT — WGPU (CubeCL) vs MLX:
+
+| N | WGPU (CubeCL) | MLX | Speedup |
+|--:|---:|---:|---:|
+| 256 | 263 µs | **118 µs** | 2.2x |
+| 1 024 | 276 µs | **120 µs** | 2.3x |
+| 4 096 | 326 µs | **123 µs** | 2.7x |
+| 16 384 | 408 µs | **150 µs** | 2.7x |
+| 65 536 | 773 µs | **209 µs** | 3.7x |
+
+**MLX** is faster at every size, reaching **313 Melem/s at N=65 536** (3.7x
+faster than WGPU). Both backends produce numerically identical results within
+f32 tolerance (1e-3).
+
+To run the comparison benchmark:
+
+```bash
+cargo bench --features wgpu,mlx --bench compare_bench
+```
 
 ### Scalar baselines
 
@@ -438,14 +474,14 @@ If you use gpu-fft in academic work, please cite it as:
   author    = {Hauptmann, Eugene},
   title     = {{gpu-fft}: GPU-Accelerated {FFT}/{IFFT} in {Rust}},
   year      = {2025},
-  version   = {1.0.0},
+  version   = {1.2.0},
   url       = {https://github.com/eugenehp/gpu-fft},
   note      = {Cooley--Tukey radix-4 DIT implementation via CubeCL (wgpu / CUDA)}
 }
 ```
 
 **Plain text (APA)**
-> Hauptmann, E. (2025). *gpu-fft: GPU-accelerated FFT/IFFT in Rust* (v1.0.0).
+> Hauptmann, E. (2025). *gpu-fft: GPU-accelerated FFT/IFFT in Rust* (v1.2.0).
 > https://github.com/eugenehp/gpu-fft
 
 ## License
